@@ -1,5 +1,8 @@
 venv/
 biblio/
-data/
 codes/res/
+codes/__pycache__
+codes/data/*.zip
+codes/*.png
+codes/utils.sh
 *.pdf
