@@ -5,8 +5,7 @@ import matplotlib.pyplot as plt
 opti = ca.Opti()
 np.random.seed(42)
 
-# Direct Multiple Shooting --> whole traj is a variable that Casadi is manipulating    
-
+# Direct Multiple Shooting --> whole traj is a state variable for Casadi
 t_end = 10
 N = 100
 time_step = t_end / N

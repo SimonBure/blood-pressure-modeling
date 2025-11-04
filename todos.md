@@ -3,8 +3,6 @@
 - PC en attente livraison
 - mutuelle santé --> prendre la mienne ? --> appeler papa/maman
 - activer carte étudiant
-- activer imagine R sur pass navigo
-- formulaire BD amsterdam par un praticien
 
 # Todo scientifique
 ## Anesthésie
@@ -29,7 +27,11 @@
   - 
 
 - estimation poids total db physionet + amsterdam utiles ~ 1-2TB.
-- poly automatique florent
+
+
+- présentation thèse pour les médecins le 12 novembre (20 minutes)
+  - Chirurgie / NICU
+  - 
 
 
 ## Exploration DB
@@ -43,17 +45,42 @@
 
 
 # Prompts
-You are a professional data scientist with decade of expertise both in academic research and  and professor, specialized in giving precise, meaningful and clear as water courses on your domains of expertise.
-My goals: after simulation of the PKPD model and by comparing the simulated versus the actual data (norepinephrine concentration / blood pressure e.g. figure 2 and 3) I want to compute the parameters value --> parameters inference. First: using values for drug plasmatic concentration/blood pressure taken as mean of those values for all individuals. Second, individual parameter inferences using the individual datas.
-Write a small introduction to parameter inference statistical and AI based. What are the main approaches, algorithms, techniques ?
+You are a NLP optimization expert, totally familiar with casadi python lib.
+
+Context & Goal: I want to estimate the best parameter values of my pkpd multi-compartment population model that is defined in details in pkpd.py or in paper biblio/jonas_pkpd.pdf. I want to use casadi Direct Multiple Shooting NLP solver in a similar way that of example script test_casadi.py. We want 1 model at the population level, that could be shared by all patients.
+
+Task : Write a detailed prompt for coding agent with every details written down. Ask user for ambiguity clearance or critical question to answer before coding.
+
+Specifications: update and write code in opti_popuplation.py.
+Reuse maximum of pkpd.py functions --> load_observation, load_injections, INOR for drug injection protocol depending on patient etc.
+Follow following casadi code structure for optimization NLP problem : 
+- Define time parameters : max time is ~2200 sec. Time step : 1 time point every 30 sec.
+- Define opti variables --> all pk parameters except T_lag and exponents gamma & beta (we are first working with linear version of pkpd model), all pd parameters (emax + windkessel) + compartment state variables (A_d, A_c, A_p, E emax + windkessel)
+- Define all initial conditions constraints + traj constraints with euler implicit schemes like in pkpd.py
+- Compute cost as sum square of differences between scheme and data obs for all patients. (obsid = 0 -->  Cc - obs ; obsid=1 --> E - obs). Data output from load_observation method will be a dict with key = patient_id and for every patient_id key, a dict with NOR plasmatic concentration AND blood_pressure available time series for this patient. Time sampling for those 2 values are inconsistant between patients and time points will be different from our 30sec grid. Time alignment problem between observation and simulated values for plasmatic concentration Cc and effect on blood pressure E. for any time point k, linear interpolation between two closest data points for the relevant observation (Cc or blood pressure) to solve the time alignment problem. If k is before first observation or after last observtion, just take exact first or last observation as the data to compute the cost contribution.
+- Define initial guesses for optimization variables. PKPD parameters are initialized with true values from pkpd model. State trajectories variable will be initialized with the simulated trajectory from patient 23, stored in codes/res/patient_23/ --> in all explicit .npy files.
+
+Output: text in a terminal-friendly format, structured in smallest task with implementation details en examples to maximize coding agent performances.
+
+Let's change strategy to start in a simpler way. Let's optimize the parameters patient by patient. For each patient_id in patients_ids :
+  - generate ~100 data points evenly distributed on curve (but we will the output by putting them on a graph with the simulated curve to compare) using previously done simulations pkpd.py. .npy files in codes/res/patient_id/linear_no_lag/files.npy. Each .npy file contains temporal trajectory from a state variable (Ac, Ad, Ab, BP_emax, BP_windkessel)
+  - casadi code : optimization of all pk-pd parameters for a given patient. Time points --> same as number of generated data to ease future cost computation.
+  - opti variables are all parameters to optimize + state variables of the model.
+  - compute cost with sum squared differences between model and data (using as always the appropriate variable from obs)
+  - prints optimal parameters values + plots of simulated "true" curve + generated data + curve with estimated parameters. You can reuse pkpd class with the estimated parameters.
+If ambiguity ask user for clarity. Reuse knowledge from previous interactions + code in pkpd.py if relevant.
+Output : text prompt for a coding agent. Structured in small tasks + details for task. 
 
 
 # Exploration
 - Simulation complète système vasculaire / cardiaque / circulatoire corps humain avec/sans pathologies
+- Suivi d'autres variables vitales
 - next-token prediction pour PA
 - deep reinforcement learning pour PA
-- apprentissage efficace sur court jeu de données
+- apprentissage efficace sur petit jeu de données
 - PINN pour ci-dessus
+- Regarder modèle IA / math pour biology état de l'art (dernier modèle très bon entraînement sur jeux de données bruitées / petits / bons pour modéliser des effets très incomplet)
+- Whole patient biological model --> avec toutes les donnéees.
 - MIT Computational Physiology Lab exchange student
 - Contact hopitaux pour obtenir base de données monitoring BP + injection drogue norépinéphrine / nicardipine --> Papa + Maman + Hermione + Jean-Yves + base Lariboisière
 - état de l'art en optimisation --> creux à remplir

@@ -3,8 +3,11 @@ import matplotlib.pyplot as plt
 from scipy.optimize import fsolve
 import pandas as pd
 import os
-import sys
 
+
+# ============================================================================
+# PKPD MODEL CLASS
+# ============================================================================
 
 class NorepinephrinePKPD:
 
@@ -22,7 +25,7 @@ class NorepinephrinePKPD:
         self.beta = 1.0 if is_linear else 1.21
 
         # PD model -- Emax equation
-        self.E_0 = 57.09    
+        self.E_0 = 57.09
         self.E_max = 113.52
         self.EC_50 = 15.7
 
@@ -122,9 +125,35 @@ class NorepinephrinePKPD:
         return t, Ad, Ac, Ap, E_emax, E_windkessel
 
 
-def load_observations(patient_ids, csv_path='./codes/data/joachim.csv'):
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+def load_observations(patient_ids=None, csv_path='./codes/data/joachim.csv'):
+    """Load observation data for specified patients.
+
+    Args:
+        patient_ids: List of patient IDs to load, or None/empty list for all patients
+        csv_path: Path to CSV file with observations
+
+    Returns:
+        Dictionary with patient observations (concentration and blood pressure)
+    """
     df = pd.read_csv(csv_path)
-    print(f"Total patients in joachim.csv = {len(df['id'].unique())}")
+    available_patients = sorted(df['id'].unique())
+
+    # If no patients specified, load all
+    if not patient_ids:
+        patient_ids = available_patients
+    else:
+        # Validate that requested patients exist in the dataset
+        invalid_patients = [pid for pid in patient_ids if pid not in available_patients]
+        if invalid_patients:
+            print(f"\n  ERROR: The following patient IDs do not exist in observations dataset:")
+            print(f"    Requested: {invalid_patients}")
+            print(f"    Available: {available_patients}")
+            exit(1)
+
     df_obs = df[df['obs'] != '.'].copy()
     df_obs['obs'] = pd.to_numeric(df_obs['obs'])
     df_obs['obsid'] = pd.to_numeric(df_obs['obsid'])
@@ -141,11 +170,54 @@ def load_observations(patient_ids, csv_path='./codes/data/joachim.csv'):
     return observations_dict
 
 
-def save_patient_results(patient_id, results, model, observations_dict=None, save_graph=True, save_res=True):
+def load_injections(patient_ids, csv_path='./codes/data/injections.csv'):
+    """Load injection protocols for specified patients.
+
+    Args:
+        patient_ids: List of patient IDs to load injection data for
+        csv_path: Path to CSV file with injection data
+
+    Returns:
+        Dictionary mapping patient_id to (times, amounts, durations)
+    """
+    inj_df = pd.read_csv(csv_path)
+    injections_dict = {}
+
+    for pid in patient_ids:
+        p_inj = inj_df[inj_df['patient_id'] == pid].sort_values('injection_time_s')
+        if len(p_inj) > 0:
+            injections_dict[pid] = (
+                p_inj['injection_time_s'].values,
+                p_inj['amount_nmol'].values,
+                p_inj['duration_s'].values
+            )
+        else:
+            # Patient has no injection data, use empty arrays
+            injections_dict[pid] = (
+                np.array([]),
+                np.array([]),
+                np.array([])
+            )
+    return injections_dict
+
+
+def save_patient_results(patient_id, results, model, observations_dict=None,
+                        save_graph=True, save_res=True, output_subdir='linear_no_lag'):
+    """Save simulation results (graphs and numpy arrays) for a patient.
+
+    Args:
+        patient_id: Patient ID
+        results: Tuple of (time, Ad, Ac, Ap, bp_emax, bp_windkessel)
+        model: NorepinephrinePKPD instance
+        observations_dict: Dictionary of observations for plotting
+        save_graph: Whether to save plots
+        save_res: Whether to save numpy arrays
+        output_subdir: Subdirectory name (e.g., 'linear_no_lag', 'power_no_lag')
+    """
     if not save_graph and not save_res:
         return
 
-    output_dir = f'res/patient_{patient_id}'
+    output_dir = f'codes/res/patient_{patient_id}/{output_subdir}'
     os.makedirs(output_dir, exist_ok=True)
     time, Ad, Ac, Ap, bp_emax, bp_windkessel = results
 
@@ -191,70 +263,123 @@ def save_patient_results(patient_id, results, model, observations_dict=None, sav
         plt.close()
 
 
-def load_injections() -> dict:
-    inj_df = pd.read_csv('./codes/data/injections.csv')
-    injections_dict = {}
-
-    for pid in inj_df['patient_id'].unique():
-        p_inj = inj_df[inj_df['patient_id'] == pid].sort_values('injection_time_s')
-        injections_dict[pid] = (
-            p_inj['injection_time_s'].values,
-            p_inj['amount_nmol'].values,
-            p_inj['duration_s'].values
-        )
-    return injections_dict
-
-def check_patient_id(patient_ids: list, injections_dict: dict):
-    for pid in patient_ids:
-        if pid not in injections_dict:
-            print(f"Erreur: Patient ID {pid} n'existe pas dans injections_dict")
-            print(f"IDs disponibles: {sorted(injections_dict.keys())}")
-            sys.exit(1)
-            
-def decide_simulation_token(i: int):
+def decide_simulation_token(i):
+    """Return rotating progress indicator."""
     if i % 4 == 0:
-        simulation_token = '|'
+        return '|'
     elif i % 4 == 1:
-        simulation_token = '/'
+        return '/'
     elif i % 4 == 2:
-        simulation_token = '-'
+        return '-'
     else:
-        simulation_token = '\\'
-    return simulation_token
-    
-def main():
-    import argparse
-
-    parser = argparse.ArgumentParser(description='Simulation PK/PD Norepinephrine')
-    parser.add_argument('patient_ids', nargs='*', type=int, help='Liste des IDs patients (vide = tous les patients)')
-    parser.add_argument('--no-graph', action='store_true', help='Ne pas sauvegarder les graphiques')
-    parser.add_argument('--no-res', action='store_true', help='Ne pas sauvegarder les résultats numpy')
-    args = parser.parse_args()
-
-    injections_dict = load_injections()
-
-    # If no ID provided by CLI --> loop over all existing patients
-    if args.patient_ids:
-        patient_list = args.patient_ids
-        check_patient_id(patient_list, injections_dict)
-        
-    else:
-        patient_list = sorted(injections_dict.keys())
-
-    observations_dict = load_observations(patient_list)  # only needed obs
-    linear_model = NorepinephrinePKPD(injections_dict, is_linear=True)
-    
-
-    print(f"Simulation de {len(patient_list)} patient(s)...")
-    for i, patient_id in enumerate(patient_list):
-        simulation_token = decide_simulation_token(i)
-        
-        print(f"{simulation_token} Patient {patient_id}")
-        
-        results = linear_model.simulate(patient_id)
-        save_patient_results(patient_id, results, linear_model, observations_dict, not args.no_graph, not args.no_res)
-    print("\nSimulations terminées!")
+        return '\\'
 
 
-if __name__ == "__main__":
-    main()
+# ============================================================================
+# META-PARAMETERS DEFINITION
+# ============================================================================
+
+# Patients to simulate (empty list = all patients from observation dataset)
+patients = []  # Example: [23, 20, 15] or [] for all
+
+# Model type: linear (exponents = 1.0) or non-linear (exponents != 1.0)
+is_linear = False
+
+# Output control
+save_graphs = True
+save_numpy_results = True
+output_subdirectory = 'linear_no_lag' if is_linear else 'power_no_lag'
+
+# ============================================================================
+# PREPROCESSING & LOADINGS
+# ============================================================================
+
+print("\n" + "="*70)
+print("PKPD SIMULATION - NOREPINEPHRINE MODEL")
+print("="*70)
+
+# Load observation data (primary data source)
+print("\nLoading observation data...")
+if not patients:
+    print(f"  → No patients specified, loading all patients from dataset")
+else:
+    print(f"  → Loading {len(patients)} specified patient(s): {patients}")
+
+observations_dict = load_observations(patients)
+patients = [int(p) for p in sorted(observations_dict.keys())]  # Update patients list with loaded IDs (convert to int)
+print(f"  ✓ Loaded observations for {len(observations_dict)} patients")
+
+# Load injection data for the patients with observations
+print("\nLoading injection protocols...")
+injections_dict = load_injections(patients)
+patients_with_injections = [pid for pid in patients if len(injections_dict[pid][0]) > 0]
+patients_without_injections = [pid for pid in patients if len(injections_dict[pid][0]) == 0]
+print(f"  ✓ Loaded injection data for {len(patients_with_injections)} patients")
+if patients_without_injections:
+    print(f"  ⚠ Warning: {len(patients_without_injections)} patient(s) have no injection data: {patients_without_injections}")
+
+pkpd_model = NorepinephrinePKPD(injections_dict, is_linear=is_linear)
+
+np.set_printoptions(precision=1)
+
+print("\n" + "-"*70)
+print("SIMULATION META-PARAMETERS")
+print("-"*70)
+print(f"  Model type: {'Linear (gamma=1.0, beta=1.0)' if is_linear else f'Non-linear (gamma={pkpd_model.gamma}, beta={pkpd_model.beta})'}")
+print(f"  Number of patients: {len(patients)}")
+print(f"  Patient IDs: {patients}")
+print(f"  Save graphs: {save_graphs}")
+print(f"  Save numpy arrays: {save_numpy_results}")
+print(f"  Output directory: codes/res/patient_<id>/{output_subdirectory}/")
+print("\n  PKPD Model Parameters:")
+print(f"    PK: C_endo={pkpd_model.C_endo}, k_a={pkpd_model.k_a}, V_c={pkpd_model.V_c}, k_12={pkpd_model.k_12}, k_21={pkpd_model.k_21}, k_el={pkpd_model.k_el}")
+print(f"    PK exponents: gamma={pkpd_model.gamma}, beta={pkpd_model.beta}")
+print(f"    PD Emax: E_0={pkpd_model.E_0}, E_max={pkpd_model.E_max}, EC_50={pkpd_model.EC_50}")
+print(f"    PD Windkessel: omega={pkpd_model.omega}, zeta={pkpd_model.zeta}, nu={pkpd_model.nu}")
+print("-"*70)
+
+
+# ============================================================================
+# SIMULATION
+# ============================================================================
+
+print("\n" + "="*70)
+print(f"STARTING SIMULATION FOR {len(patients)} PATIENT(S)")
+print("="*70 + "\n")
+
+# Simulate each patient
+for i, patient_id in enumerate(patients):
+    # Progress indicator
+    progress_token = decide_simulation_token(i)
+    print(f"{progress_token} Patient {patient_id:3d} ", end='', flush=True)
+
+    # Run simulation
+    results = pkpd_model.simulate(patient_id, t_end=2200, dt=0.5)
+
+    # Save results
+    save_patient_results(
+        patient_id,
+        results,
+        pkpd_model,
+        observations_dict,
+        save_graph=save_graphs,
+        save_res=save_numpy_results,
+        output_subdir=output_subdirectory
+    )
+
+    print("✓")
+
+
+# ============================================================================
+# COMPLETION
+# ============================================================================
+
+print("\n" + "="*70)
+print("SIMULATION COMPLETED SUCCESSFULLY")
+print("="*70)
+print(f"  Results saved in: codes/res/patient_<id>/{output_subdirectory}/")
+if save_graphs:
+    print(f"    - Graphs: blood_pressure_evol.png, nor_conc_evol.png")
+if save_numpy_results:
+    print(f"    - Arrays: time.npy, Ad.npy, Ac.npy, Ap.npy, bp_emax.npy, bp_windkessel.npy")
+print("="*70 + "\n")
