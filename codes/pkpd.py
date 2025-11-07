@@ -274,112 +274,90 @@ def decide_simulation_token(i):
     else:
         return '\\'
 
+if __name__ == "__main__":
+    # Patients to simulate (empty list = all patients from observation dataset)
+    patients = []  # Example: [23, 20, 15] or [] for all
 
-# ============================================================================
-# META-PARAMETERS DEFINITION
-# ============================================================================
+    # Model type: linear (exponents = 1.0) or non-linear (exponents != 1.0)
+    is_linear = False
 
-# Patients to simulate (empty list = all patients from observation dataset)
-patients = []  # Example: [23, 20, 15] or [] for all
+    # Output control
+    save_graphs = True
+    save_numpy_results = True
+    output_subdirectory = 'linear_no_lag' if is_linear else 'power_no_lag'
+    
+    print("\n" + "="*70)
+    print("PKPD SIMULATION - NOREPINEPHRINE MODEL")
+    print("="*70)
 
-# Model type: linear (exponents = 1.0) or non-linear (exponents != 1.0)
-is_linear = False
+    print("\nLoading observation data...")
+    if not patients:
+        print(f"  → No patients specified, loading all patients from dataset")
+    else:
+        print(f"  → Loading {len(patients)} specified patient(s): {patients}")
 
-# Output control
-save_graphs = True
-save_numpy_results = True
-output_subdirectory = 'linear_no_lag' if is_linear else 'power_no_lag'
+    observations_dict = load_observations(patients)
+    patients = [int(p) for p in sorted(observations_dict.keys())]
+    print(f"  ✓ Loaded observations for {len(observations_dict)} patients")
 
-# ============================================================================
-# PREPROCESSING & LOADINGS
-# ============================================================================
+    print("\nLoading injection protocols...")
+    injections_dict = load_injections(patients)
+    patients_with_injections = [pid for pid in patients if len(injections_dict[pid][0]) > 0]
+    patients_without_injections = [pid for pid in patients if len(injections_dict[pid][0]) == 0]
+    print(f"  ✓ Loaded injection data for {len(patients_with_injections)} patients")
+    if patients_without_injections:
+        print(f"  ⚠ Warning: {len(patients_without_injections)} patient(s) have no injection data: {patients_without_injections}")
 
-print("\n" + "="*70)
-print("PKPD SIMULATION - NOREPINEPHRINE MODEL")
-print("="*70)
+    pkpd_model = NorepinephrinePKPD(injections_dict, is_linear=is_linear)
 
-# Load observation data (primary data source)
-print("\nLoading observation data...")
-if not patients:
-    print(f"  → No patients specified, loading all patients from dataset")
-else:
-    print(f"  → Loading {len(patients)} specified patient(s): {patients}")
+    print("\n" + "-"*70)
+    print("SIMULATION META-PARAMETERS")
+    print("-"*70)
+    print(f"  Model type: {'Linear (gamma=1.0, beta=1.0)' if is_linear else f'Non-linear (gamma={pkpd_model.gamma}, beta={pkpd_model.beta})'}")
+    print(f"  Number of patients: {len(patients)}")
+    print(f"  Patient IDs: {patients}")
+    print(f"  Save graphs: {save_graphs}")
+    print(f"  Save numpy arrays: {save_numpy_results}")
+    print(f"  Output directory: codes/res/patient_<id>/{output_subdirectory}/")
+    print("\n  PKPD Model Parameters:")
+    print(f"    PK: C_endo={pkpd_model.C_endo}, k_a={pkpd_model.k_a}, V_c={pkpd_model.V_c}, k_12={pkpd_model.k_12}, k_21={pkpd_model.k_21}, k_el={pkpd_model.k_el}")
+    print(f"    PK exponents: gamma={pkpd_model.gamma}, beta={pkpd_model.beta}")
+    print(f"    PD Emax: E_0={pkpd_model.E_0}, E_max={pkpd_model.E_max}, EC_50={pkpd_model.EC_50}")
+    print(f"    PD Windkessel: omega={pkpd_model.omega}, zeta={pkpd_model.zeta}, nu={pkpd_model.nu}")
+    print("-"*70)
 
-observations_dict = load_observations(patients)
-patients = [int(p) for p in sorted(observations_dict.keys())]  # Update patients list with loaded IDs (convert to int)
-print(f"  ✓ Loaded observations for {len(observations_dict)} patients")
+    print("\n" + "="*70)
+    print(f"STARTING SIMULATION FOR {len(patients)} PATIENT(S)")
+    print("="*70 + "\n")
 
-# Load injection data for the patients with observations
-print("\nLoading injection protocols...")
-injections_dict = load_injections(patients)
-patients_with_injections = [pid for pid in patients if len(injections_dict[pid][0]) > 0]
-patients_without_injections = [pid for pid in patients if len(injections_dict[pid][0]) == 0]
-print(f"  ✓ Loaded injection data for {len(patients_with_injections)} patients")
-if patients_without_injections:
-    print(f"  ⚠ Warning: {len(patients_without_injections)} patient(s) have no injection data: {patients_without_injections}")
+    # Simulate each patient
+    for i, patient_id in enumerate(patients):
+        # Progress indicator
+        progress_token = decide_simulation_token(i)
+        print(f"{progress_token} Patient {patient_id:3d} ", end='', flush=True)
 
-pkpd_model = NorepinephrinePKPD(injections_dict, is_linear=is_linear)
+        # Run simulation
+        results = pkpd_model.simulate(patient_id, t_end=2200, dt=0.5)
 
-np.set_printoptions(precision=1)
+        # Save results
+        save_patient_results(
+            patient_id,
+            results,
+            pkpd_model,
+            observations_dict,
+            save_graph=save_graphs,
+            save_res=save_numpy_results,
+            output_subdir=output_subdirectory
+        )
 
-print("\n" + "-"*70)
-print("SIMULATION META-PARAMETERS")
-print("-"*70)
-print(f"  Model type: {'Linear (gamma=1.0, beta=1.0)' if is_linear else f'Non-linear (gamma={pkpd_model.gamma}, beta={pkpd_model.beta})'}")
-print(f"  Number of patients: {len(patients)}")
-print(f"  Patient IDs: {patients}")
-print(f"  Save graphs: {save_graphs}")
-print(f"  Save numpy arrays: {save_numpy_results}")
-print(f"  Output directory: codes/res/patient_<id>/{output_subdirectory}/")
-print("\n  PKPD Model Parameters:")
-print(f"    PK: C_endo={pkpd_model.C_endo}, k_a={pkpd_model.k_a}, V_c={pkpd_model.V_c}, k_12={pkpd_model.k_12}, k_21={pkpd_model.k_21}, k_el={pkpd_model.k_el}")
-print(f"    PK exponents: gamma={pkpd_model.gamma}, beta={pkpd_model.beta}")
-print(f"    PD Emax: E_0={pkpd_model.E_0}, E_max={pkpd_model.E_max}, EC_50={pkpd_model.EC_50}")
-print(f"    PD Windkessel: omega={pkpd_model.omega}, zeta={pkpd_model.zeta}, nu={pkpd_model.nu}")
-print("-"*70)
-
-
-# ============================================================================
-# SIMULATION
-# ============================================================================
-
-print("\n" + "="*70)
-print(f"STARTING SIMULATION FOR {len(patients)} PATIENT(S)")
-print("="*70 + "\n")
-
-# Simulate each patient
-for i, patient_id in enumerate(patients):
-    # Progress indicator
-    progress_token = decide_simulation_token(i)
-    print(f"{progress_token} Patient {patient_id:3d} ", end='', flush=True)
-
-    # Run simulation
-    results = pkpd_model.simulate(patient_id, t_end=2200, dt=0.5)
-
-    # Save results
-    save_patient_results(
-        patient_id,
-        results,
-        pkpd_model,
-        observations_dict,
-        save_graph=save_graphs,
-        save_res=save_numpy_results,
-        output_subdir=output_subdirectory
-    )
-
-    print("✓")
-
-
-# ============================================================================
-# COMPLETION
-# ============================================================================
-
-print("\n" + "="*70)
-print("SIMULATION COMPLETED SUCCESSFULLY")
-print("="*70)
-print(f"  Results saved in: codes/res/patient_<id>/{output_subdirectory}/")
-if save_graphs:
-    print(f"    - Graphs: blood_pressure_evol.png, nor_conc_evol.png")
-if save_numpy_results:
-    print(f"    - Arrays: time.npy, Ad.npy, Ac.npy, Ap.npy, bp_emax.npy, bp_windkessel.npy")
-print("="*70 + "\n")
+        print("✓")
+        
+    print("\n" + "="*70)
+    print("SIMULATION COMPLETED SUCCESSFULLY")
+    print("="*70)
+    print(f"  Results saved in: codes/res/patient_<id>/{output_subdirectory}/")
+    if save_graphs:
+        print(f"    - Graphs: blood_pressure_evol.png, nor_conc_evol.png")
+    if save_numpy_results:
+        print(f"    - Arrays: time.npy, Ad.npy, Ac.npy, Ap.npy, bp_emax.npy, bp_windkessel.npy")
+    print("="*70 + "\n")
