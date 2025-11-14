@@ -46,13 +46,11 @@ class NorepinephrinePKPD:
             return 0.0
 
         times, amounts, durations = self.injections_dict[patient_id]
-
-        for i in range(len(times)):
-            t_start = times[i]
+                
+        for i, t_start in enumerate(times):
             t_end = t_start + durations[i]
             if t_start <= t < t_end:
                 return amounts[i] / durations[i]
-
         return 0.0
 
     def pk_rhs(self, t, y, patient_id):
@@ -129,76 +127,16 @@ class NorepinephrinePKPD:
 # HELPER FUNCTIONS
 # ============================================================================
 
-def load_observations(patient_ids=None, csv_path='./codes/data/joachim.csv'):
-    """Load observation data for specified patients.
+def decide_simulation_token(index):
+    """Return a progress token for simulation display.
 
     Args:
-        patient_ids: List of patient IDs to load, or None/empty list for all patients
-        csv_path: Path to CSV file with observations
+        index: Simulation index.
 
     Returns:
-        Dictionary with patient observations (concentration and blood pressure)
+        Progress indicator string.
     """
-    df = pd.read_csv(csv_path)
-    available_patients = sorted(df['id'].unique())
-
-    # If no patients specified, load all
-    if not patient_ids:
-        patient_ids = available_patients
-    else:
-        # Validate that requested patients exist in the dataset
-        invalid_patients = [pid for pid in patient_ids if pid not in available_patients]
-        if invalid_patients:
-            print(f"\n  ERROR: The following patient IDs do not exist in observations dataset:")
-            print(f"    Requested: {invalid_patients}")
-            print(f"    Available: {available_patients}")
-            exit(1)
-
-    df_obs = df[df['obs'] != '.'].copy()
-    df_obs['obs'] = pd.to_numeric(df_obs['obs'])
-    df_obs['obsid'] = pd.to_numeric(df_obs['obsid'])
-
-    observations_dict = {}
-    for pid in patient_ids:
-        patient_obs = df_obs[df_obs['id'] == pid]
-        conc_obs = patient_obs[patient_obs['obsid'] == 0]
-        bp_obs = patient_obs[patient_obs['obsid'] == 1]
-        observations_dict[pid] = {
-            'concentration': list(zip(conc_obs['time(s)'].values, conc_obs['obs'].values)),
-            'blood_pressure': list(zip(bp_obs['time(s)'].values, bp_obs['obs'].values))
-        }
-    return observations_dict
-
-
-def load_injections(patient_ids, csv_path='./codes/data/injections.csv'):
-    """Load injection protocols for specified patients.
-
-    Args:
-        patient_ids: List of patient IDs to load injection data for
-        csv_path: Path to CSV file with injection data
-
-    Returns:
-        Dictionary mapping patient_id to (times, amounts, durations)
-    """
-    inj_df = pd.read_csv(csv_path)
-    injections_dict = {}
-
-    for pid in patient_ids:
-        p_inj = inj_df[inj_df['patient_id'] == pid].sort_values('injection_time_s')
-        if len(p_inj) > 0:
-            injections_dict[pid] = (
-                p_inj['injection_time_s'].values,
-                p_inj['amount_nmol'].values,
-                p_inj['duration_s'].values
-            )
-        else:
-            # Patient has no injection data, use empty arrays
-            injections_dict[pid] = (
-                np.array([]),
-                np.array([]),
-                np.array([])
-            )
-    return injections_dict
+    return "►"
 
 
 def save_patient_results(patient_id, results, model, observations_dict=None,
@@ -232,12 +170,12 @@ def save_patient_results(patient_id, results, model, observations_dict=None,
     if save_graph:
         plt.figure(figsize=(10, 6))
         plt.plot(time, bp_emax, 'b-', label='Emax (Simulated)')
-        plt.plot(time, bp_windkessel, color='orange', linestyle='--', label='Windkessel (Simulated)')
+        # plt.plot(time, bp_windkessel, color='orange', linestyle='--', label='Windkessel (Simulated)')
         if observations_dict and patient_id in observations_dict:
             bp_obs = observations_dict[patient_id]['blood_pressure']
             if bp_obs:
                 obs_times, obs_values = zip(*bp_obs)
-                plt.scatter(obs_times, obs_values, c='red', marker='o', s=30, label='Measured Data Points', zorder=5)
+                plt.scatter(obs_times, obs_values, c='red', s=30, label='Measured Data Points', zorder=5)
         plt.xlabel('Time (s)')
         plt.ylabel('MAP (mmHg)')
         plt.title(f'Patient {patient_id} - Blood Pressure')
@@ -253,7 +191,7 @@ def save_patient_results(patient_id, results, model, observations_dict=None,
             conc_obs = observations_dict[patient_id]['concentration']
             if conc_obs:
                 obs_times, obs_values = zip(*conc_obs)
-                plt.scatter(obs_times, obs_values, c='red', marker='o', s=30, label='Measured Data Points', zorder=5)
+                plt.scatter(obs_times, obs_values, c='red', s=30, label='Measured Data Points', zorder=5)
         plt.xlabel('Time (s)')
         plt.ylabel('NOR Concentration (nmol/L)')
         plt.title(f'Patient {patient_id} - NOR Plasma Concentration')
@@ -263,23 +201,14 @@ def save_patient_results(patient_id, results, model, observations_dict=None,
         plt.close()
 
 
-def decide_simulation_token(i):
-    """Return rotating progress indicator."""
-    if i % 4 == 0:
-        return '|'
-    elif i % 4 == 1:
-        return '/'
-    elif i % 4 == 2:
-        return '-'
-    else:
-        return '\\'
-
 if __name__ == "__main__":
+    from utils import load_observations, load_injections
+
     # Patients to simulate (empty list = all patients from observation dataset)
-    patients = []  # Example: [23, 20, 15] or [] for all
+    patients = [23]  # Example: [23, 20, 15] or [] for all
 
     # Model type: linear (exponents = 1.0) or non-linear (exponents != 1.0)
-    is_linear = False
+    is_linear = True
 
     # Output control
     save_graphs = True

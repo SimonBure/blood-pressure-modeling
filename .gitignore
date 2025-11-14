@@ -1,5 +1,7 @@
 venv/
 biblio/
+pres/
+codes/data/physionet.org
 codes/res/
 codes/__pycache__
 codes/data/*.zip
