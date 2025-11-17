@@ -8,8 +8,6 @@ from cost_functions import create_cost_function
 from utils import (
     load_observations,
     load_injections,
-    load_patient_data,
-    interpolate_observations,
     save_optimal_parameters,
     print_optimization_results
 )
@@ -35,7 +33,6 @@ def precompute_injection_rates(patient_id: int,
         Array of injection rates at each time point.
     """
     model = NorepinephrinePKPD(injections_dict)
-    print(f"Times injection: {times}")
     inor_values = np.array([model.INOR(t, patient_id) for t in times])
     return inor_values
 
@@ -244,9 +241,9 @@ def configure_solver(opti: ca.Opti, config: OptimizationConfig) -> None:
     opts = {
         'ipopt.max_iter': config.ipopt_max_iter,
         'ipopt.tol': config.ipopt_tol,
-        'ipopt.acceptable_tol': 1e-4,
-        'ipopt.acceptable_iter': 15,
-        'ipopt.print_level': 5,
+        'ipopt.acceptable_tol': config.ipopt_acceptable_tol,
+        'ipopt.acceptable_iter': config.ipopt_acceptable_iter,
+        'ipopt.print_level': config.ipopt_print_level,
         'print_time': False
     }
     opti.solver('ipopt', opts)
@@ -412,7 +409,7 @@ def optimize_patient_parameters(times: np.ndarray,
     states = setup_state_variables(opti, N, config)
 
     # Apply constraints
-    apply_initial_conditions(opti, states, physio, config)
+    # apply_initial_conditions(opti, states, physio, config)
     apply_parameter_bounds(opti, params, config)
     apply_dynamics_constraints(opti, N, dt_values, params, states, inor_values, config)
 
@@ -457,21 +454,19 @@ def optimize_patient_parameters(times: np.ndarray,
 
 def resimulate_with_optimized_params(patient_id: int,
                                     params_opt: Dict[str, float],
-                                    injections_dict: Dict,
-                                    is_linear: bool) -> Tuple:
+                                    injections_dict: Dict) -> Tuple:
     """Create new model with optimized parameters and simulate.
 
     Args:
         patient_id: Patient ID.
         params_opt: Dictionary of optimized parameters.
         injections_dict: Dictionary of injection protocols.
-        is_linear: Whether to use linear model.
 
     Returns:
         Tuple of (t, Ad, Ac, Ap, E_emax, E_windkessel) from simulation.
     """
     # Create model instance
-    model = NorepinephrinePKPD(injections_dict, is_linear=is_linear)
+    model = NorepinephrinePKPD(injections_dict)
 
     # Override parameters with optimized values
     model.C_endo = params_opt['C_endo']
@@ -495,17 +490,36 @@ def resimulate_with_optimized_params(patient_id: int,
     return t, Ad, Ac, Ap, E_emax, E_windkessel
 
 
+def get_initial_guess_from_physio(times: np.ndarray,
+                                  physio: PhysiologicalConstants) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Generate initial guess for state trajectories based on physiological constants.
+
+    Args:
+        times: Array of time points.
+        physio: Physiological constants.
+
+    Returns:
+        Tuple of (Ad_data, Ac_data, Ap_data, E_data) arrays initialized to zeros/constants.
+    """
+    n_points = len(times)
+    Ad_data = np.zeros(n_points)
+    Ac_data = np.zeros(n_points)
+    Ap_data = np.zeros(n_points)
+    E_data = np.full(n_points, physio.E_0)  # Initialize to E_0 baseline
+    return Ad_data, Ac_data, Ap_data, E_data
+
+
 if __name__ == "__main__":
     # Create configuration
+    # NOTE: Set patient_ids=None to process ALL patients, or specify a list like [23, 45]
     config = OptimizationConfig(
-        patient_ids=[23],
-        n_data_points=105,
-        is_linear=True,
+        patient_ids=[i for i in range(24, 36) if i != 32],  # None = all patients, or specify list like [23]
         cost_function_mode='emax',
         data_dir='codes/res',
         output_dir='opti',
         ipopt_max_iter=5000,
-        ipopt_tol=1e-6
+        ipopt_tol=1e-6,
+        ipopt_print_level=0  # 0=silent, 3=minimal, 5=verbose (default)
     )
 
     print("\n" + "="*70)
@@ -513,18 +527,36 @@ if __name__ == "__main__":
     print("="*70)
     print(f"Configuration:")
     print(f"  - Patients: {config.patient_ids}")
-    print(f"  - Data points: {config.n_data_points}")
-    print(f"  - Model: {'Linear' if config.is_linear else 'Non-linear'}")
+    print(f"  - Time sampling: Patient-specific (using actual observation times)")
+    print(f"  - Max data points: {config.max_data_points} (subsample if exceeded)")
     print(f"  - Cost function mode: {config.cost_function_mode}")
-    print(f"  - BP model for initialization: emax")
     print(f"  - Output directory: {config.output_dir}/")
     print("="*70 + "\n")
 
-    # Load data (ensure patient_ids is not None)
-    patient_ids = config.patient_ids if config.patient_ids else []
-    injections_dict = load_injections(patient_ids)
-    print(f"Injection dict: {injections_dict}")
-    observations = load_observations(patient_ids)
+    # Load data - pass patient_ids as-is (None or list)
+    # load_observations and load_injections will handle None by loading all patients
+    injections_dict = load_injections(config.patient_ids, config.inj_csv_path)
+    observations = load_observations(config.patient_ids, config.obs_csv_path)
+
+    # Determine actual patient list after loading
+    # Use intersection of patients with both observations and injections
+    patients_with_obs = set(observations.keys())
+    patients_with_inj = set(injections_dict.keys())
+    available_patients = sorted(patients_with_obs & patients_with_inj)
+
+    # Filter to only include requested patient IDs if specified
+    if config.patient_ids is not None:
+        patient_ids = [pid for pid in config.patient_ids if pid in available_patients]
+    else:
+        patient_ids = available_patients
+
+    print(f"Patient IDs after loading: {patient_ids}")
+
+    if not patient_ids:
+        print("ERROR: No patients found with both observations and injection data!")
+        exit(1)
+
+    print(f"Loaded data for {len(patient_ids)} patient(s): {patient_ids}\n")
 
     # Get initial parameters for comparison
     physio = PhysiologicalConstants()
@@ -548,25 +580,43 @@ if __name__ == "__main__":
         print(f"# Processing Patient {patient_id}")
         print(f"{'#'*70}\n")
 
-        print("Step 1: Loading .npy trajectories for initialization...")
-        times, Ad_data, Ac_data, Ap_data, E_data, full_traj = load_patient_data(
-            patient_id, config.n_data_points, config.is_linear,
-            config.data_dir, init_bp_model='emax'
-        )
-        print(f"  ✓ Loaded {len(times)} time points")
+        print("Step 1: Extracting observation times and values...")
+        # Get time points directly from blood pressure observations
+        bp_obs_data = observations[patient_id]['blood_pressure']
+        if not bp_obs_data:
+            print(f"  ERROR: No blood pressure observations for patient {patient_id}")
+            continue
 
-        print("\nStep 2: Interpolating real observations to time grid...")
-        BP_obs = interpolate_observations(observations, patient_id, times)
-        print(f"  ✓ Interpolated {len(BP_obs)} blood pressure observations")
+        times = np.array([t for t, _ in bp_obs_data])
+        BP_obs = np.array([v for _, v in bp_obs_data])
+        n_original_observations = len(times)
+        print(f"  ✓ Extracted {n_original_observations} observation time points")
+        print(f"  ✓ Time range: [{times[0]:.1f}s, {times[-1]:.1f}s]")
+
+        # Apply subsampling if needed
+        if n_original_observations > config.max_data_points:
+            print(f"  ⚠ Subsampling from {n_original_observations} to {config.max_data_points} points")
+            indices = np.linspace(0, n_original_observations - 1, config.max_data_points, dtype=int)
+            times = times[indices]
+            BP_obs = BP_obs[indices]
+            n_optimization_points = config.max_data_points
+        else:
+            n_optimization_points = n_original_observations
+
+        print(f"  ✓ Using {n_optimization_points} points for optimization")
+
+        print("\nStep 2: Generating initial guess for state trajectories...")
+        Ad_data, Ac_data, Ap_data, E_data = get_initial_guess_from_physio(times, physio)
+        print(f"  ✓ Generated initial guesses for {len(times)} time points")
 
         print("\nStep 3: Precomputing injection rates...")
         inor_values = precompute_injection_rates(patient_id, times, injections_dict)
         print(f"  ✓ Precomputed INOR for {len(inor_values)} time points")
-        
+
         print("\nCreating injection verification plot...")
         plot_injection_verification(
             patient_id, times, inor_values, injections_dict,
-            config.data_dir, config.output_dir, config.n_data_points
+            config.data_dir, config.output_dir, n_optimization_points
         )
 
         print("\nStep 4: Running CasADi optimization...")
@@ -582,8 +632,8 @@ if __name__ == "__main__":
         save_optimal_parameters(
             patient_id, result.params, result.cost,
             config.data_dir, config.output_dir,
-            config.n_data_points, config.cost_function_mode,
-            config.is_linear
+            n_original_observations, n_optimization_points,
+            config.cost_function_mode
         )
 
         print("\nStep 6: Printing optimization results...")
@@ -591,7 +641,7 @@ if __name__ == "__main__":
 
         print("Step 7: Re-simulating with optimized parameters...")
         resim_results = resimulate_with_optimized_params(
-            patient_id, result.params, injections_dict, config.is_linear
+            patient_id, result.params, injections_dict
         )
         print("  ✓ Re-simulation completed")
 
@@ -600,14 +650,14 @@ if __name__ == "__main__":
             patient_id, observations, result.trajectories,
             result.params, resim_results,
             config.data_dir, config.output_dir,
-            config.n_data_points, config.cost_function_mode
+            n_optimization_points, config.cost_function_mode
         )
 
         print("\nStep 9: Comparing CasADi vs PKPD trajectories...")
         plot_pkpd_vs_casadi_trajectories(
             patient_id, result.trajectories, resim_results,
             result.params, config.data_dir, config.output_dir,
-            config.n_data_points, config.cost_function_mode
+            n_optimization_points, config.cost_function_mode
         )
 
     print(f"\n{'='*70}")
