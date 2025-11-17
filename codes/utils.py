@@ -92,6 +92,32 @@ def load_injections(patient_ids: Optional[List[int]] = None,
     return injections_dict
 
 
+def load_patient_e0_indiv(patient_ids: Optional[List[int]] = None,
+                          csv_path: str = 'codes/data/joachim.csv') -> Dict[int, float]:
+    """Load individual baseline E0 (starting blood pressure) for each patient.
+
+    Args:
+        patient_ids: List of patient IDs to load, or None for all patients.
+        csv_path: Path to CSV file with observations.
+
+    Returns:
+        Dictionary mapping patient_id to E0_indiv value (baseline BP in mmHg).
+    """
+    df = pd.read_csv(csv_path)
+    available_patients = sorted(df['id'].unique())
+
+    # If no patients specified, load all
+    if not patient_ids:
+        patient_ids = available_patients
+
+    e0_dict = {}
+    for pid in patient_ids:
+        patient_data = df[df['id'] == pid]
+        if not patient_data.empty:
+            # E0_indiv is constant per patient (same value in all rows)
+            e0_dict[pid] = float(patient_data['E0_indiv'].iloc[0])
+
+    return e0_dict
 
 
 # ==============================================================================

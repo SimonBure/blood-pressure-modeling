@@ -8,6 +8,7 @@ from cost_functions import create_cost_function
 from utils import (
     load_observations,
     load_injections,
+    load_patient_e0_indiv,
     save_optimal_parameters,
     print_optimization_results
 )
@@ -258,7 +259,8 @@ def set_initial_guess(opti: ca.Opti,
                      Ap_data: np.ndarray,
                      E_data: np.ndarray,
                      N: int,
-                     config: OptimizationConfig) -> None:
+                     config: OptimizationConfig,
+                     patient_e0: float | None = None) -> None:
     """Set initial guess for parameters and states.
 
     Args:
@@ -269,6 +271,7 @@ def set_initial_guess(opti: ca.Opti,
         Ad_data, Ac_data, Ap_data, E_data: State data for initialization.
         N: Number of intervals.
         config: Optimization configuration.
+        patient_e0: Patient-specific baseline E0 (from E0_indiv). If None, uses physio.E_0.
     """
     print("  Setting initial guesses...")
 
@@ -282,7 +285,9 @@ def set_initial_guess(opti: ca.Opti,
 
     # Initialize PD parameters (only if they are variables)
     if config.cost_function_mode in ['emax', 'both']:
-        opti.set_initial(params['E_0'], physio.E_0)
+        # Use patient-specific E0 if available, otherwise use default
+        e0_initial = patient_e0 if patient_e0 is not None else physio.E_0
+        opti.set_initial(params['E_0'], e0_initial)
         opti.set_initial(params['E_max'], physio.E_max)
         opti.set_initial(params['EC_50'], physio.EC_50)
 
@@ -377,7 +382,8 @@ def optimize_patient_parameters(times: np.ndarray,
                                 Ac_data: np.ndarray,
                                 Ap_data: np.ndarray,
                                 E_data: np.ndarray,
-                                config: OptimizationConfig) -> OptimizationResult:
+                                config: OptimizationConfig,
+                                patient_e0: float | None = None) -> OptimizationResult:
     """Run CasADi optimization to estimate PKPD parameters.
 
     Args:
@@ -387,6 +393,7 @@ def optimize_patient_parameters(times: np.ndarray,
         Ad_data, Ac_data, Ap_data: State data for initialization.
         E_data: Windkessel/Emax state for initialization.
         config: Optimization configuration.
+        patient_e0: Patient-specific baseline E0 (from E0_indiv). If None, uses default.
 
     Returns:
         OptimizationResult dataclass with params, trajectories, cost, etc.
@@ -428,7 +435,7 @@ def optimize_patient_parameters(times: np.ndarray,
 
     # Set initial guess
     set_initial_guess(opti, params, states, physio,
-                     Ad_data, Ac_data, Ap_data, E_data, N, config)
+                     Ad_data, Ac_data, Ap_data, E_data, N, config, patient_e0)
 
     # Solve optimization
     sol, converged = solve_optimization(opti)
@@ -490,30 +497,44 @@ def resimulate_with_optimized_params(patient_id: int,
     return t, Ad, Ac, Ap, E_emax, E_windkessel
 
 
-def get_initial_guess_from_physio(times: np.ndarray,
-                                  physio: PhysiologicalConstants) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Generate initial guess for state trajectories based on physiological constants.
+def get_initial_guess_from_pkpd(patient_id: int,
+                                times: np.ndarray,
+                                data_dir: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Generate initial guess for state trajectories from precomputed PKPD model.
+
+    Loads trajectories from pkpd/ directory and interpolates to match observation times.
 
     Args:
-        times: Array of time points.
-        physio: Physiological constants.
+        patient_id: Patient ID.
+        times: Array of observation time points.
+        data_dir: Base directory for patient data.
 
     Returns:
-        Tuple of (Ad_data, Ac_data, Ap_data, E_data) arrays initialized to zeros/constants.
+        Tuple of (Ad_data, Ac_data, Ap_data, E_data) arrays interpolated to observation times.
     """
-    n_points = len(times)
-    Ad_data = np.zeros(n_points)
-    Ac_data = np.zeros(n_points)
-    Ap_data = np.zeros(n_points)
-    E_data = np.full(n_points, physio.E_0)  # Initialize to E_0 baseline
+    pkpd_path = f'{data_dir}/patient_{patient_id}/pkpd'
+
+    # Load full trajectories from pkpd/ directory
+    time_full = np.load(f'{pkpd_path}/time.npy')
+    Ad_full = np.load(f'{pkpd_path}/Ad.npy')
+    Ac_full = np.load(f'{pkpd_path}/Ac.npy')
+    Ap_full = np.load(f'{pkpd_path}/Ap.npy')
+    E_full = np.load(f'{pkpd_path}/bp_emax.npy')
+
+    # Interpolate to match observation time points
+    Ad_data = np.interp(times, time_full, Ad_full)
+    Ac_data = np.interp(times, time_full, Ac_full)
+    Ap_data = np.interp(times, time_full, Ap_full)
+    E_data = np.interp(times, time_full, E_full)
+
     return Ad_data, Ac_data, Ap_data, E_data
 
 
 if __name__ == "__main__":
-    # Create configuration
     # NOTE: Set patient_ids=None to process ALL patients, or specify a list like [23, 45]
     config = OptimizationConfig(
-        patient_ids=[i for i in range(24, 36) if i != 32],  # None = all patients, or specify list like [23]
+        patient_ids=[],  # None = all patients, or specify list like [23]
+        max_data_points=1001,
         cost_function_mode='emax',
         data_dir='codes/res',
         output_dir='opti',
@@ -545,10 +566,10 @@ if __name__ == "__main__":
     available_patients = sorted(patients_with_obs & patients_with_inj)
 
     # Filter to only include requested patient IDs if specified
-    if config.patient_ids is not None:
-        patient_ids = [pid for pid in config.patient_ids if pid in available_patients]
-    else:
+    if config.patient_ids is None or config.patient_ids == []:
         patient_ids = available_patients
+    else:
+        patient_ids = [pid for pid in config.patient_ids if pid in available_patients]
 
     print(f"Patient IDs after loading: {patient_ids}")
 
@@ -556,7 +577,12 @@ if __name__ == "__main__":
         print("ERROR: No patients found with both observations and injection data!")
         exit(1)
 
-    print(f"Loaded data for {len(patient_ids)} patient(s): {patient_ids}\n")
+    print(f"Loaded data for {len(patient_ids)} patient(s): {patient_ids}")
+
+    # Load patient-specific baseline E0 values
+    print("Loading patient-specific E0_indiv values...")
+    patient_e0_dict = load_patient_e0_indiv(patient_ids, config.obs_csv_path)
+    print(f"  ✓ Loaded E0_indiv for {len(patient_e0_dict)} patients\n")
 
     # Get initial parameters for comparison
     physio = PhysiologicalConstants()
@@ -605,9 +631,13 @@ if __name__ == "__main__":
 
         print(f"  ✓ Using {n_optimization_points} points for optimization")
 
-        print("\nStep 2: Generating initial guess for state trajectories...")
-        Ad_data, Ac_data, Ap_data, E_data = get_initial_guess_from_physio(times, physio)
-        print(f"  ✓ Generated initial guesses for {len(times)} time points")
+        print("\nStep 2: Loading initial guess from PKPD model trajectories...")
+        Ad_data, Ac_data, Ap_data, E_data = get_initial_guess_from_pkpd(
+            patient_id, times, config.data_dir
+        )
+        patient_e0 = patient_e0_dict[patient_id]
+        print(f"  ✓ Loaded and interpolated PKPD trajectories for {len(times)} time points")
+        print(f"  ✓ Patient-specific E0_indiv: {patient_e0:.2f} mmHg")
 
         print("\nStep 3: Precomputing injection rates...")
         inor_values = precompute_injection_rates(patient_id, times, injections_dict)
@@ -623,7 +653,7 @@ if __name__ == "__main__":
         result = optimize_patient_parameters(
             times, BP_obs, inor_values,
             Ad_data, Ac_data, Ap_data, E_data,
-            config
+            config, patient_e0
         )
         print(f"  ✓ Final cost: {result.cost:.4f}")
         print(f"  ✓ Solve time: {result.solve_time:.2f}s")

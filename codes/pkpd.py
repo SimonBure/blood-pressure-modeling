@@ -208,7 +208,7 @@ if __name__ == "__main__":
     # Output control
     save_graphs = True
     save_numpy_results = True
-    output_subdirectory = 'linear_no_lag'
+    output_subdirectory = 'pkpd'
 
     print("\n" + "="*70)
     print("PKPD SIMULATION - NOREPINEPHRINE MODEL")
