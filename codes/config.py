@@ -118,8 +118,8 @@ class OptimizationConfig:
 
     Attributes:
         patient_ids: List of patient IDs to optimize. None = all patients from observations.
-        n_data_points: Number of time points for optimization grid.
-        is_linear: Use linear (True) or power-law (False) PK model.
+        max_data_points: Maximum number of optimization time points. If patient has more
+            observations, uniform subsampling is applied.
         cost_function_mode: Cost function type - 'emax', 'windkessel', or 'both'.
         data_dir: Base directory for patient data.
         output_dir: Output subdirectory name within patient directories.
@@ -136,11 +136,10 @@ class OptimizationConfig:
     # Patient selection
     patient_ids: Optional[List[int]] = None
 
-    # Discretization
-    n_data_points: int = 100
+    # Subsampling configuration
+    max_data_points: int = 400  # Maximum optimization points (subsample if exceeded)
 
     # Model configuration
-    is_linear: bool = True
     cost_function_mode: str = 'emax'
 
     # Paths

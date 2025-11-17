@@ -11,7 +11,7 @@ import os
 
 class NorepinephrinePKPD:
 
-    def __init__(self, injections_dict=None, is_linear=True):
+    def __init__(self, injections_dict=None):
         self.injections_dict = injections_dict if injections_dict is not None else {}
 
         # PK model parameters
@@ -21,8 +21,6 @@ class NorepinephrinePKPD:
         self.k_12 = 0.06
         self.k_21 = 0.04
         self.k_el = 0.05
-        self.gamma = 1.0 if is_linear else 1.46
-        self.beta = 1.0 if is_linear else 1.21
 
         # PD model -- Emax equation
         self.E_0 = 57.09
@@ -207,14 +205,11 @@ if __name__ == "__main__":
     # Patients to simulate (empty list = all patients from observation dataset)
     patients = [23]  # Example: [23, 20, 15] or [] for all
 
-    # Model type: linear (exponents = 1.0) or non-linear (exponents != 1.0)
-    is_linear = True
-
     # Output control
     save_graphs = True
     save_numpy_results = True
-    output_subdirectory = 'linear_no_lag' if is_linear else 'power_no_lag'
-    
+    output_subdirectory = 'linear_no_lag'
+
     print("\n" + "="*70)
     print("PKPD SIMULATION - NOREPINEPHRINE MODEL")
     print("="*70)
@@ -237,12 +232,12 @@ if __name__ == "__main__":
     if patients_without_injections:
         print(f"  ⚠ Warning: {len(patients_without_injections)} patient(s) have no injection data: {patients_without_injections}")
 
-    pkpd_model = NorepinephrinePKPD(injections_dict, is_linear=is_linear)
+    pkpd_model = NorepinephrinePKPD(injections_dict)
 
     print("\n" + "-"*70)
     print("SIMULATION META-PARAMETERS")
     print("-"*70)
-    print(f"  Model type: {'Linear (gamma=1.0, beta=1.0)' if is_linear else f'Non-linear (gamma={pkpd_model.gamma}, beta={pkpd_model.beta})'}")
+    print(f"  Model type: Linear")
     print(f"  Number of patients: {len(patients)}")
     print(f"  Patient IDs: {patients}")
     print(f"  Save graphs: {save_graphs}")
@@ -250,7 +245,6 @@ if __name__ == "__main__":
     print(f"  Output directory: codes/res/patient_<id>/{output_subdirectory}/")
     print("\n  PKPD Model Parameters:")
     print(f"    PK: C_endo={pkpd_model.C_endo}, k_a={pkpd_model.k_a}, V_c={pkpd_model.V_c}, k_12={pkpd_model.k_12}, k_21={pkpd_model.k_21}, k_el={pkpd_model.k_el}")
-    print(f"    PK exponents: gamma={pkpd_model.gamma}, beta={pkpd_model.beta}")
     print(f"    PD Emax: E_0={pkpd_model.E_0}, E_max={pkpd_model.E_max}, EC_50={pkpd_model.EC_50}")
     print(f"    PD Windkessel: omega={pkpd_model.omega}, zeta={pkpd_model.zeta}, nu={pkpd_model.nu}")
     print("-"*70)
@@ -280,7 +274,7 @@ if __name__ == "__main__":
         )
 
         print("✓")
-        
+
     print("\n" + "="*70)
     print("SIMULATION COMPLETED SUCCESSFULLY")
     print("="*70)
