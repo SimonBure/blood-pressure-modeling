@@ -6,5 +6,5 @@ codes/res/
 codes/__pycache__
 codes/data/*.zip
 codes/*.png
-codes/utils.sh
+codes/*.sh
 *.pdf

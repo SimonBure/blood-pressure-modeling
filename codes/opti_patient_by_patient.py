@@ -164,6 +164,28 @@ def apply_parameter_bounds(opti: ca.Opti,
                 opti.subject_to(param_var <= upper)
 
 
+def apply_parameter_constraints(opti: ca.Opti,
+                                params: Dict,
+                                config: OptimizationConfig,
+                                patient_e0: float | None = None) -> None:
+    """Apply hard equality constraints on parameters.
+
+    Args:
+        opti: CasADi Opti object.
+        params: Dictionary of parameter variables.
+        config: Optimization configuration.
+        patient_e0: Patient-specific E0_indiv value to constrain E_0 to.
+    """
+    if config.use_e0_constraint:
+        # Only apply constraint if E_0 is a variable (not a fixed value)
+        if 'E_0' in params and isinstance(params['E_0'], (ca.MX, ca.SX)):
+            if patient_e0 is not None:
+                print(f"    Applying hard constraint: E_0 == {patient_e0:.2f} mmHg")
+                opti.subject_to(params['E_0'] == patient_e0)
+            else:
+                print(f"    WARNING: use_e0_constraint=True but patient_e0=None, constraint not applied")
+
+
 def apply_dynamics_constraints(opti: ca.Opti,
                                N: int,
                                dt_values: np.ndarray,
@@ -418,6 +440,7 @@ def optimize_patient_parameters(times: np.ndarray,
     # Apply constraints
     # apply_initial_conditions(opti, states, physio, config)
     apply_parameter_bounds(opti, params, config)
+    apply_parameter_constraints(opti, params, config, patient_e0)
     apply_dynamics_constraints(opti, N, dt_values, params, states, inor_values, config)
 
     # Build cost function (BP-only, no concentration term)
@@ -532,12 +555,18 @@ def get_initial_guess_from_pkpd(patient_id: int,
 
 if __name__ == "__main__":
     # NOTE: Set patient_ids=None to process ALL patients, or specify a list like [23, 45]
+
+    # Configuration
+    use_e0_constraint = True  # Toggle E_0 constraint mode
+    output_subdir = 'opti-e0-constraint' if use_e0_constraint else 'opti'
+
     config = OptimizationConfig(
         patient_ids=[],  # None = all patients, or specify list like [23]
         max_data_points=1001,
         cost_function_mode='emax',
+        use_e0_constraint=use_e0_constraint,  # E_0 constraint mode
         data_dir='codes/res',
-        output_dir='opti',
+        output_dir=output_subdir,
         ipopt_max_iter=5000,
         ipopt_tol=1e-6,
         ipopt_print_level=0  # 0=silent, 3=minimal, 5=verbose (default)
@@ -551,6 +580,7 @@ if __name__ == "__main__":
     print(f"  - Time sampling: Patient-specific (using actual observation times)")
     print(f"  - Max data points: {config.max_data_points} (subsample if exceeded)")
     print(f"  - Cost function mode: {config.cost_function_mode}")
+    print(f"  - E_0 mode: {'Hard constraint to E0_indiv' if config.use_e0_constraint else 'Initial guess from E0_indiv'}")
     print(f"  - Output directory: {config.output_dir}/")
     print("="*70 + "\n")
 

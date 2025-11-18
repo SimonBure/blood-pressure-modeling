@@ -121,6 +121,8 @@ class OptimizationConfig:
         max_data_points: Maximum number of optimization time points. If patient has more
             observations, uniform subsampling is applied.
         cost_function_mode: Cost function type - 'emax', 'windkessel', or 'both'.
+        use_e0_constraint: If True, E_0 is constrained to patient's E0_indiv (hard constraint).
+            If False, E0_indiv is used only as initial guess. Results saved to different directories.
         data_dir: Base directory for patient data.
         output_dir: Output subdirectory name within patient directories.
         obs_csv_path: Path to observations CSV file.
@@ -141,6 +143,7 @@ class OptimizationConfig:
 
     # Model configuration
     cost_function_mode: str = 'emax'
+    use_e0_constraint: bool = False  # If True, E_0 is constrained to E0_indiv; if False, used as initial guess only
 
     # Paths
     data_dir: str = 'codes/res'

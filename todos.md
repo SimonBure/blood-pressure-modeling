@@ -1,24 +1,20 @@
 # Todo admin
 - asso doctorant dopamines (sport)
 - PC en attente livraison
-- contacter Fabrice pour assister à une opération
 - souscrire mutuelle alan 
 
 # Todo scientifique
 ## Anesthésie
-- Finir l'identification avec 3 compartiments 
-  - Tester 2 compartiments 
 - Se renseigner sur les moindres carrés récursifs (comprendre la forme 'régresseur', les variables instrumentales)
 - Regarder comment faire l'inférence Bayesienne (si t'as le temps le faire pour un système simple 'toy problem')
-- inférer pour le reste des patients
-
 - étudier convexité et non-convexité du problème --> plot fonction de coût vs. variation 1 paramètre, le reste fixé.
-
 - étudier importance du schéma de discrétisation --> comparer != + implicite vs explicite
-
 - sensibilité et réduction du nombre de paramètres ?
-
 - estimation poids total db physionet + amsterdam utiles ~ 1-2TB.
+
+- modèle à 2 compartiments et comparaison fits
+
+- interpolation pour combler les trous de données pour patients 21
 
 
 ## Exploration DB
@@ -34,10 +30,8 @@
 ## Codes
 - simuler du temps réel --> prédiction du modèle ?
 
-
 ## Bibliographie
 - physiologie nor --> effets, élimination nor ? --> reins ?
-
 - Efficacité contrôleurs actuels BP ?
 - Efficacité prédiction machine learning ?
 - Google Deep Learning pour la météo.
@@ -47,21 +41,15 @@
 - modèles bayésiens pour la biologie
 - all available controllers ? Holes ? Design a more adapted controller ?
 
-
 # Besoins
 
 # Questions
-- exponents beta & gamma as model parameters to be optimized ? --> yes and easy
-- casadi optimized traj vs pkpd model --> why not the same thing ? --> code pb in casadi --> injections INOR + lag ?
-- negative parameters values --> add > 0 constraints on parameters ? --> yes
-- cost computation adding BP differences AND Cc differences altogether ? Meaningless addition of different units ? --> don't optimize on NOR concentration (Cc), just BP.
 - questions anesthésistes --> protocole et règles internes pour injection bolus NOR / contrôle MAP ? motifs hypotension ? --> seuil bas impératif ? seuil sur la dynamique ? Remplacer anesthésiste sur long-terme ? Meilleurs soins ? Lissés les réponses MAP pour éviter les surdosages et surtensions aussi dangeureux ? --> pas d'impératif pour avoir une réponse lissée
 
+- contrainte sur la valeur de E_0 --> prendre celle mesurée ?
+
 # Prompts
-Let's clean our code, and separate the functions into different modules. 1 module for plottnig, 1 module with utils (loading functions, saving functions, printing functions).
-Task: create 2 python modules --> utils.py + plots.py that will store all relevant functions from pkpd.py AND opti_patient_by_patient.py.
-Keep in pkpd --> only methods related to pkpkd class and same for opti --> only functions for NL optimization with casadi.
-Ask for clarifications if needed.
+
 
 # Exploration
 - Simulation complète système vasculaire / cardiaque / circulatoire corps humain avec/sans pathologies
