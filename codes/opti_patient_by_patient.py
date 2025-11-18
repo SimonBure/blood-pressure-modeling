@@ -561,7 +561,7 @@ if __name__ == "__main__":
     output_subdir = 'opti-e0-constraint' if use_e0_constraint else 'opti'
 
     config = OptimizationConfig(
-        patient_ids=[],  # None = all patients, or specify list like [23]
+        patient_ids=[8],  # None = all patients, or specify list like [23]
         max_data_points=1001,
         cost_function_mode='emax',
         use_e0_constraint=use_e0_constraint,  # E_0 constraint mode
@@ -585,7 +585,7 @@ if __name__ == "__main__":
     print("="*70 + "\n")
 
     # Load data - pass patient_ids as-is (None or list)
-    # load_observations and load_injections will handle None by loading all patients
+    # load_observations and load_injections will handle None/[] by loading all patients
     injections_dict = load_injections(config.patient_ids, config.inj_csv_path)
     observations = load_observations(config.patient_ids, config.obs_csv_path)
 

@@ -36,24 +36,26 @@ def get_patient_directories(res_dir: str) -> List[int]:
     return sorted(patient_ids)
 
 
-def load_all_parameters(res_dir: str, patient_ids: List[int]) -> Dict[int, Dict]:
+def load_all_parameters(res_dir: str, patient_ids: List[int],
+                       opti_subdir: str = 'opti') -> Dict[int, Dict]:
     """Load optimized parameters from all patients.
 
     Args:
         res_dir: Path to results directory.
         patient_ids: List of patient IDs to load.
+        opti_subdir: Optimization subdirectory name ('opti' or 'opti-e0-constraint').
 
     Returns:
         Dictionary mapping patient_id to params dict.
 
     Raises:
-        FileNotFoundError: If any patient is missing opti/params.json.
+        FileNotFoundError: If any patient is missing params.json in the specified subdirectory.
     """
     all_params = {}
     missing_patients = []
 
     for pid in patient_ids:
-        params_path = os.path.join(res_dir, f'patient_{pid}', 'opti', 'params.json')
+        params_path = os.path.join(res_dir, f'patient_{pid}', opti_subdir, 'params.json')
         if not os.path.exists(params_path):
             missing_patients.append(pid)
         else:
@@ -62,7 +64,7 @@ def load_all_parameters(res_dir: str, patient_ids: List[int]) -> Dict[int, Dict]
 
     if missing_patients:
         raise FileNotFoundError(
-            f"Missing opti/params.json for patient(s): {missing_patients}\n"
+            f"Missing {opti_subdir}/params.json for patient(s): {missing_patients}\n"
             f"Please run optimization for these patients first."
         )
 
@@ -332,11 +334,25 @@ def main():
     """Main function to run population statistics analysis."""
     # Configuration
     res_dir = 'codes/res'
-    output_dir = os.path.join(res_dir, '0_population')
+    use_e0_constraint = True  # Toggle E_0 constraint mode
+    
+    opti_subdir = 'opti-e0-constraint' if use_e0_constraint else 'opti'
+    
+    output_dir = '0_population-e0-constraint' if use_e0_constraint else '0_population' 
+    output_dir = os.path.join(res_dir, output_dir)
+
+    # Choose which optimization results to analyze:
+    # 'opti' = E_0 as initial guess (optimized)
+    # 'opti-e0-constraint' = E_0 as hard constraint (fixed to observed value)
 
     print("\n" + "="*80)
     print("PKPD PARAMETER POPULATION STATISTICS ANALYSIS")
     print("="*80)
+    print(f"Analyzing results from: {opti_subdir}/")
+    if opti_subdir == 'opti':
+        print("  (E_0 optimized as free parameter)")
+    elif opti_subdir == 'opti-e0-constraint':
+        print("  (E_0 constrained to observed E0_indiv)")
 
     # Get all patient directories
     print("\nScanning for patient directories...")
@@ -350,7 +366,7 @@ def main():
     # Load all parameters
     print("\nLoading optimized parameters...")
     try:
-        all_params = load_all_parameters(res_dir, patient_ids)
+        all_params = load_all_parameters(res_dir, patient_ids, opti_subdir)
         print(f"Successfully loaded parameters for {len(all_params)} patients")
     except FileNotFoundError as e:
         print(f"\nERROR: {e}")

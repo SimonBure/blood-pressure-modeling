@@ -46,7 +46,8 @@
 # Questions
 - questions anesthésistes --> protocole et règles internes pour injection bolus NOR / contrôle MAP ? motifs hypotension ? --> seuil bas impératif ? seuil sur la dynamique ? Remplacer anesthésiste sur long-terme ? Meilleurs soins ? Lissés les réponses MAP pour éviter les surdosages et surtensions aussi dangeureux ? --> pas d'impératif pour avoir une réponse lissée
 
-- contrainte sur la valeur de E_0 --> prendre celle mesurée ?
+- optimisation avec E_0 == E_0 observée comme contrainte
+- resimulation PKPD seulement sur la fenêtre temporelle des données ?
 
 # Prompts
 
