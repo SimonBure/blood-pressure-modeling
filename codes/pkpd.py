@@ -11,7 +11,7 @@ import os
 
 class NorepinephrinePKPD:
 
-    def __init__(self, injections_dict=None):
+    def __init__(self, injections_dict=None, initial_conditions={}):
         self.injections_dict = injections_dict if injections_dict is not None else {}
 
         # PK model parameters
@@ -33,10 +33,9 @@ class NorepinephrinePKPD:
         self.nu = 2.12
 
         # Initial conditions
-        self.Ad_0 = 0.0
-        self.Ac_0 = 0.0
-        self.Ap_0 = 0.0
-        self.E_0_init = 57.09
+        self.Ad_0 = initial_conditions['Ad_0'] if initial_conditions != {} else 0.0
+        self.Ac_0 = initial_conditions['Ac_0'] if initial_conditions != {} else 0.0
+        self.Ap_0 = initial_conditions['Ap_0'] if initial_conditions != {} else 0.0
         self.dEdt_0 = 0.0
 
     def INOR(self, t, patient_id):
@@ -101,7 +100,7 @@ class NorepinephrinePKPD:
         Cc[0] = self.compute_concentration(Ac[0])
 
         E_emax[0] = self.pd_emax(Cc[0])
-        y_pd = np.array([self.E_0_init, self.dEdt_0])
+        y_pd = np.array([self.E_0, self.dEdt_0])
         E_windkessel[0] = y_pd[0]
 
         for i in range(n_steps - 1):

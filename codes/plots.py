@@ -12,6 +12,7 @@ def plot_optimization_results(patient_id: int,
                               traj_opt: Dict,
                               params_opt: Dict[str, float],
                               resim_results: Tuple,
+                              E_equilibrium: np.ndarray,
                               data_dir: str,
                               output_dir: str,
                               n_data_points: int,
@@ -24,6 +25,7 @@ def plot_optimization_results(patient_id: int,
         traj_opt: Dict of optimized trajectories from CasADi.
         params_opt: Optimized parameters dict.
         resim_results: Re-simulation results tuple.
+        E_equilibrium: Array of equilibrium blood pressure values over time.
         data_dir: Base data directory.
         output_dir: Output subdirectory name.
         n_data_points: Number of data points used.
@@ -92,6 +94,9 @@ def plot_optimization_results(patient_id: int,
                 label='CasADi Optimized (Emax)', alpha=0.7)
         ax2.plot(t_resim, E_emax_resim, 'g--', linewidth=2,
                 label='PKPD Resimulated (Emax)', alpha=0.7)
+        # Add equilibrium blood pressure line
+        ax2.plot(times_casadi, E_equilibrium, 'k--', linewidth=2,
+                label='MAP équilibre', alpha=0.7)
     elif cost_function_mode == 'windkessel':
         E_casadi = traj_opt['E']
         ax2.plot(times_casadi, E_casadi, 'b-', linewidth=2,
@@ -104,6 +109,9 @@ def plot_optimization_results(patient_id: int,
                 label='CasADi Optimized (Windkessel)', alpha=0.7)
         ax2.plot(t_resim, E_windkessel_resim, 'g--', linewidth=2,
                 label='PKPD Resimulated (Windkessel)', alpha=0.7)
+        # Add equilibrium blood pressure line (using Emax parameters from 'both' mode)
+        ax2.plot(times_casadi, E_equilibrium, 'k--', linewidth=2,
+                label='MAP équilibre', alpha=0.7)
 
     ax2.set_xlabel('Time (s)', fontsize=12)
     ax2.set_ylabel('MAP (mmHg)', fontsize=12)
@@ -111,6 +119,11 @@ def plot_optimization_results(patient_id: int,
                   fontsize=14, fontweight='bold')
     ax2.legend(fontsize=10)
     ax2.grid(True, alpha=0.3)
+
+    # Set y-axis limit based on actual BP dynamics (excluding equilibrium peaks)
+    max_bp = np.max(bp_values)
+    ax2.set_ylim(top=max_bp + 5)
+
     plt.tight_layout()
     plt.savefig(f'{output_path}/bp_opt.png', dpi=150)
     plt.close()

@@ -38,6 +38,46 @@ def precompute_injection_rates(patient_id: int,
     return inor_values
 
 
+def compute_equilibrium_blood_pressure(times: np.ndarray,
+                                       inor_values: np.ndarray,
+                                       params: Dict[str, float]) -> np.ndarray:
+    """Compute equilibrium blood pressure over time using Emax model.
+
+    The equilibrium is computed using the stationary INOR value at each time point,
+    representing the theoretical steady-state blood pressure if the current injection
+    rate were maintained indefinitely.
+
+    Formula:
+    E_eq = E_0 + (E_max - E_0) * C_eq / (C_eq + EC_50)
+    where C_eq = C_endo + I* / (k_el * Vc)
+
+    Args:
+        times: Array of time points.
+        inor_values: Array of INOR injection rates at each time point (stationary values).
+        params: Dictionary containing optimized parameters (E_0, E_max, EC_50, C_endo, k_el, V_c).
+
+    Returns:
+        Array of equilibrium blood pressure values at each time point.
+    """
+    # Extract parameters
+    E_0 = params['E_0']
+    E_max = params['E_max']
+    EC_50 = params['EC_50']
+    C_endo = params['C_endo']
+    k_el = params['k_el']
+    V_c = params['V_c']
+
+    # Compute equilibrium concentration
+    # At equilibrium: dAc/dt = 0, which gives Ac_eq = I* / k_el
+    # Therefore: C_eq = C_endo + Ac_eq / Vc = C_endo + I* / (k_el * Vc)
+    C_eq = C_endo + inor_values / (k_el * V_c)
+
+    # Compute equilibrium blood pressure using Emax model
+    E_eq = E_0 + (E_max - E_0) * C_eq / (C_eq + EC_50)
+
+    return E_eq
+
+
 def setup_optimization_variables(opti: ca.Opti,
                                 config: OptimizationConfig,
                                 physio: PhysiologicalConstants) -> Dict:
@@ -483,6 +523,7 @@ def optimize_patient_parameters(times: np.ndarray,
 
 
 def resimulate_with_optimized_params(patient_id: int,
+                                     trajectories,
                                     params_opt: Dict[str, float],
                                     injections_dict: Dict) -> Tuple:
     """Create new model with optimized parameters and simulate.
@@ -495,8 +536,11 @@ def resimulate_with_optimized_params(patient_id: int,
     Returns:
         Tuple of (t, Ad, Ac, Ap, E_emax, E_windkessel) from simulation.
     """
+    pkpd_initial_conditions = {'Ad_0': trajectories['Ad'][0],
+                               'Ac_0': trajectories['Ac'][0],
+                               'Ap_0': trajectories['Ap'][0]}
     # Create model instance
-    model = NorepinephrinePKPD(injections_dict)
+    model = NorepinephrinePKPD(injections_dict, pkpd_initial_conditions)
 
     # Override parameters with optimized values
     model.C_endo = params_opt['C_endo']
@@ -557,11 +601,11 @@ if __name__ == "__main__":
     # NOTE: Set patient_ids=None to process ALL patients, or specify a list like [23, 45]
 
     # Configuration
-    use_e0_constraint = True  # Toggle E_0 constraint mode
+    use_e0_constraint = False  # Toggle E_0 constraint mode
     output_subdir = 'opti-e0-constraint' if use_e0_constraint else 'opti'
 
     config = OptimizationConfig(
-        patient_ids=[8],  # None = all patients, or specify list like [23]
+        patient_ids=[],  # None = all patients, or specify list like [23]
         max_data_points=1001,
         cost_function_mode='emax',
         use_e0_constraint=use_e0_constraint,  # E_0 constraint mode
@@ -701,14 +745,19 @@ if __name__ == "__main__":
 
         print("Step 7: Re-simulating with optimized parameters...")
         resim_results = resimulate_with_optimized_params(
-            patient_id, result.params, injections_dict
+            patient_id, result.trajectories, result.params, injections_dict
         )
         print("  ✓ Re-simulation completed")
+
+        # Compute equilibrium blood pressure
+        E_equilibrium = compute_equilibrium_blood_pressure(
+            times, inor_values, result.params
+        )
 
         print("\nStep 8: Creating visualization plots...")
         plot_optimization_results(
             patient_id, observations, result.trajectories,
-            result.params, resim_results,
+            result.params, resim_results, E_equilibrium,
             config.data_dir, config.output_dir,
             n_optimization_points, config.cost_function_mode
         )
