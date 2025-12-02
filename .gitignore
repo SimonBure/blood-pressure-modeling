@@ -1,10 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
 venv/
-biblio/
-pres/
-codes/data/physionet.org
-codes/res/
-codes/__pycache__
-codes/data/*.zip
-codes/*.png
-codes/*.sh
+env/
+ENV/
+.venv
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Data files
+data/*.zip
+data/physionet.org/
+
+# Results and outputs
+res/
+*.png
 *.pdf
+*.csv
+!data/injections.csv
+!data/joachim.csv
+
+# Shell scripts
+*.sh
+
+# OS
+.DS_Store
+Thumbs.db
