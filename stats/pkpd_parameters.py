@@ -3,6 +3,7 @@ Population-level statistics analysis for optimized PKPD parameters.
 
 This script analyzes optimized parameters across all patients and generates:
 - Mean, standard deviation, min, max, and median for each parameter
+- Boxplot visualizations for parameter distributions
 - Summary statistics saved to JSON
 - Comparison between optimized E_0 and observed E0_indiv values
 """
@@ -11,6 +12,7 @@ import os
 import json
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from typing import Dict, List
 from utils.datatools import load_patient_e0_indiv
 
@@ -168,6 +170,85 @@ def save_statistics(stats: Dict[str, Dict[str, float]],
     print(f"\nStatistics saved to {json_path}")
 
 
+def plot_boxplots(all_params: Dict[int, Dict], output_dir: str) -> None:
+    """Generate and save boxplots for each parameter.
+
+    Args:
+        all_params: Dictionary mapping patient_id to params dict.
+        output_dir: Directory to save boxplot figures.
+    """
+    boxplot_dir = os.path.join(output_dir, 'boxplots')
+    os.makedirs(boxplot_dir, exist_ok=True)
+
+    # Define which parameters to plot (exclude metadata)
+    metadata_keys = {'patient_id', 'cost_function_mode'}
+    first_patient_params = next(iter(all_params.values()))
+    param_names = [k for k in first_patient_params.keys() if k not in metadata_keys]
+
+    # Group parameters for organized visualization
+    param_groups = {
+        'PK Parameters': ['C_endo', 'k_a', 'V_c', 'k_12', 'k_21', 'k_el'],
+        'PD Emax Parameters': ['E_0', 'E_max', 'EC_50'],
+        'PD Windkessel Parameters': ['omega', 'zeta', 'nu'],
+        'Optimization Results': ['n_original_observations', 'n_optimization_points',
+                                'n_observation_points', 'final_cost']
+    }
+
+    print("\nGenerating boxplots...")
+    n_plots = 0
+
+    # Generate individual boxplots for each parameter
+    for param_name in param_names:
+        values = np.array([params[param_name] for params in all_params.values()])
+
+        # Create figure
+        _, ax = plt.subplots(figsize=(8, 6))
+
+        # Create boxplot
+        ax.boxplot([values], patch_artist=True,
+                   boxprops=dict(facecolor='lightblue', alpha=0.7),
+                   medianprops=dict(color='red', linewidth=2),
+                   whiskerprops=dict(linewidth=1.5),
+                   capprops=dict(linewidth=1.5))
+
+        # Add statistics text
+        mean_val = np.mean(values)
+        median_val = np.median(values)
+        std_val = np.std(values)
+
+        stats_text = (f"n = {len(values)} patients\n"
+                     f"Mean: {mean_val:.6f}\n"
+                     f"Median: {median_val:.6f}\n"
+                     f"Std: {std_val:.6f}\n"
+                     f"Min: {np.min(values):.6f}\n"
+                     f"Max: {np.max(values):.6f}")
+
+        ax.text(0.98, 0.97, stats_text,
+               transform=ax.transAxes,
+               verticalalignment='top',
+               horizontalalignment='right',
+               bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5),
+               fontsize=9,
+               family='monospace')
+
+        # Formatting
+        ax.set_ylabel(param_name, fontsize=12, fontweight='bold')
+        ax.set_title(f'Distribution of {param_name}', fontsize=14, fontweight='bold')
+        ax.grid(True, alpha=0.3, axis='y')
+
+        plt.tight_layout()
+
+        # Save figure
+        safe_param_name = param_name.replace('_', '-').lower()
+        boxplot_path = os.path.join(boxplot_dir, f'{safe_param_name}.png')
+        plt.savefig(boxplot_path, dpi=150, bbox_inches='tight')
+        plt.close()
+
+        n_plots += 1
+
+    print(f"  ✓ Generated {n_plots} boxplots in {boxplot_dir}/")
+
+
 def compare_e0_optimized_vs_observed(all_params: Dict[int, Dict],
                                       output_dir: str) -> None:
     """Compare optimized E_0 values against observed values from joachim.csv.
@@ -242,8 +323,8 @@ def main():
 
     opti_subdir = 'opti-e0-constraint' if use_e0_constraint else 'opti'
 
-    # Output to results/stats/pkpd-parameters/{opti_subdir}/
-    output_dir = os.path.join(res_dir, 'stats', 'pkpd-parameters', opti_subdir)
+    # Output to results/stats/pkpd-parameters/ (simplified path)
+    output_dir = os.path.join(res_dir, 'stats', 'pkpd-parameters')
 
     # Choose which optimization results to analyze:
     # 'opti' = E_0 as initial guess (optimized)
@@ -289,12 +370,16 @@ def main():
     # Save statistics
     save_statistics(stats, output_dir, len(all_params))
 
+    # Generate boxplots
+    plot_boxplots(all_params, output_dir)
+
     print("\n" + "="*80)
     print("ANALYSIS COMPLETE")
     print("="*80)
     print(f"Results saved in: {output_dir}/")
     print(f"  - stats.json: Summary statistics")
     print(f"  - e0_comparison.csv: E_0 comparison table")
+    print(f"  - boxplots/: Parameter distribution boxplots")
     print("="*80 + "\n")
 
 
