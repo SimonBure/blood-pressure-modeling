@@ -11,6 +11,7 @@ from stats.pkpd_parameters import (
     compute_statistics,
     print_statistics,
     save_statistics,
+    plot_boxplots,
     compare_e0_optimized_vs_observed
 )
 
@@ -30,6 +31,7 @@ __all__ = [
     'compute_statistics',
     'print_statistics',
     'save_statistics',
+    'plot_boxplots',
     'compare_e0_optimized_vs_observed',
     # pkpd_quality
     'load_patient_covariables',

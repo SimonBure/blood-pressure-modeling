@@ -194,16 +194,14 @@ def analyze_model_quality(patient_ids: List[int],
 
 
 def save_quality_analysis(results_df: pd.DataFrame,
-                         data_dir: str,
-                         output_dir: str) -> None:
+                         data_dir: str) -> None:
     """Save quality analysis results to CSV.
 
     Args:
         results_df: DataFrame with MAE and covariables.
         data_dir: Base data directory.
-        output_dir: Output subdirectory.
     """
-    output_path = f'{data_dir}/stats/pkpd-quality/{output_dir}'
+    output_path = f'{data_dir}/stats/pkpd-quality'
     os.makedirs(output_path, exist_ok=True)
 
     csv_path = f'{output_path}/quality_vs_covariables.csv'
@@ -275,7 +273,7 @@ def main():
     print_quality_summary(results_df)
 
     # Save results
-    save_quality_analysis(results_df, data_dir, output_dir)
+    save_quality_analysis(results_df, data_dir)
 
     print("\n" + "="*80)
     print("ANALYSIS COMPLETE")
