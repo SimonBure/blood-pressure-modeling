@@ -83,8 +83,26 @@ class NorepinephrinePKPD:
         y_pd_np1 = fsolve(residual, y_pd_n)
         return y_pd_np1
 
-    def simulate(self, patient_id, t_end=2200, dt=0.5):
-        t = np.arange(0, t_end + dt, dt)
+    def simulate(self, patient_id, t_end=2200, dt=0.5, t_eval=None):
+        """Simulate PKPD model using Euler implicit method.
+
+        Args:
+            patient_id: Patient ID for injection protocol.
+            t_end: End time in seconds (used only if t_eval is None).
+            dt: Time step in seconds (used only if t_eval is None).
+            t_eval: Optional array of specific time points to evaluate at.
+                   If provided, simulation uses these exact points with variable dt.
+                   If None, uses uniform grid with fixed dt.
+
+        Returns:
+            Tuple of (t, Ad, Ac, Ap, E_emax, E_windkessel) arrays.
+        """
+        # Use custom time points if provided, otherwise use uniform grid
+        if t_eval is not None:
+            t = np.asarray(t_eval)
+        else:
+            t = np.arange(0, t_end + dt, dt)
+
         n_steps = len(t)
 
         Ad = np.zeros(n_steps)
@@ -104,8 +122,11 @@ class NorepinephrinePKPD:
         E_windkessel[0] = y_pd[0]
 
         for i in range(n_steps - 1):
+            # Use variable time step when using custom time points
+            dt_i = t[i+1] - t[i]
+
             y_pk = np.array([Ad[i], Ac[i], Ap[i]])
-            y_pk_new = self.euler_implicit_pk(y_pk, t[i], dt, patient_id)
+            y_pk_new = self.euler_implicit_pk(y_pk, t[i], dt_i, patient_id)
 
             Ad[i+1] = y_pk_new[0]
             Ac[i+1] = y_pk_new[1]
@@ -114,7 +135,7 @@ class NorepinephrinePKPD:
             Cc[i+1] = self.compute_concentration(Ac[i+1])
             E_emax[i+1] = self.pd_emax(Cc[i+1])
 
-            y_pd = self.euler_implicit_windkessel(y_pd, t[i], dt, Cc[i+1])
+            y_pd = self.euler_implicit_windkessel(y_pd, t[i], dt_i, Cc[i+1])
             E_windkessel[i+1] = y_pd[0]
 
         return t, Ad, Ac, Ap, E_emax, E_windkessel

@@ -1,7 +1,7 @@
 import casadi as ca
 import numpy as np
 import os
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Optional
 
 from opti.config import OptimizationConfig, PhysiologicalConstants
 from opti.results import OptimizationResult
@@ -525,14 +525,19 @@ def optimize_patient_parameters(times: np.ndarray,
 
 def resimulate_with_optimized_params(patient_id: int,
                                      trajectories,
-                                    params_opt: Dict[str, float],
-                                    injections_dict: Dict) -> Tuple:
+                                     params_opt: Dict[str, float],
+                                     injections_dict: Dict,
+                                     observation_times: Optional[np.ndarray] = None) -> Tuple:
     """Create new model with optimized parameters and simulate.
 
     Args:
         patient_id: Patient ID.
+        trajectories: CasADi trajectories (contains initial conditions).
         params_opt: Dictionary of optimized parameters.
         injections_dict: Dictionary of injection protocols.
+        observation_times: Optional array of specific time points to simulate at.
+                          If provided, simulates on these exact time points.
+                          If None, uses fixed grid (t_end=2200, dt=0.5).
 
     Returns:
         Tuple of (t, Ad, Ac, Ap, E_emax, E_windkessel) from simulation.
@@ -557,10 +562,16 @@ def resimulate_with_optimized_params(patient_id: int,
     model.zeta = params_opt['zeta']
     model.nu = params_opt['nu']
 
-    # Simulate
-    t, Ad, Ac, Ap, E_emax, E_windkessel = model.simulate(
-        patient_id, t_end=2200, dt=0.5
-    )
+    # Simulate with custom time points if provided
+    if observation_times is not None:
+        t, Ad, Ac, Ap, E_emax, E_windkessel = model.simulate(
+            patient_id, t_eval=observation_times
+        )
+    else:
+        # Fallback to fixed grid for backward compatibility
+        t, Ad, Ac, Ap, E_emax, E_windkessel = model.simulate(
+            patient_id, t_end=2200, dt=0.5
+        )
 
     return t, Ad, Ac, Ap, E_emax, E_windkessel
 
@@ -633,7 +644,7 @@ if __name__ == "__main__":
     output_subdir = 'opti-e0-constraint' if use_e0_constraint else 'opti'
 
     config = OptimizationConfig(
-        patient_ids=[],  # None = all patients, or specify list like [23]
+        patient_ids=[1],  # None = all patients, or specify list like [23]
         max_data_points=1001,
         cost_function_mode='emax',
         use_e0_constraint=use_e0_constraint,  # E_0 constraint mode
@@ -773,9 +784,10 @@ if __name__ == "__main__":
 
         print("Step 7: Re-simulating with optimized parameters...")
         resim_results = resimulate_with_optimized_params(
-            patient_id, result.trajectories, result.params, injections_dict
+            patient_id, result.trajectories, result.params, injections_dict,
+            observation_times=times
         )
-        print("  ✓ Re-simulation completed")
+        print("  ✓ Re-simulation completed (on observation time points)")
 
         print("\nStep 7b: Saving resimulated trajectories...")
         save_resimulated_trajectories(

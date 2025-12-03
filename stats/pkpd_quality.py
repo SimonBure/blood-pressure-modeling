@@ -100,8 +100,14 @@ def compute_patient_mae(patient_id: int,
     obs_times = np.array([t for t, _ in bp_obs_data])
     obs_bp = np.array([v for _, v in bp_obs_data])
 
-    # Interpolate resimulated BP to observation times
-    resim_bp_at_obs = np.interp(obs_times, resim_time, resim_bp)
+    # Check if resimulation time points match observation times exactly
+    if len(resim_time) == len(obs_times) and np.allclose(resim_time, obs_times, rtol=1e-9):
+        # Direct comparison without interpolation (more accurate)
+        resim_bp_at_obs = resim_bp
+    else:
+        # Fall back to interpolation (for backward compatibility with old results)
+        # This branch will be used for resimulations done before the update
+        resim_bp_at_obs = np.interp(obs_times, resim_time, resim_bp)
 
     # Compute MAE
     mae = np.mean(np.abs(obs_bp - resim_bp_at_obs))
