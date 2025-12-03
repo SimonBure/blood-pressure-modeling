@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 from typing import Dict, Tuple
-from ..pkpd import NorepinephrinePKPD
+from pkpd import NorepinephrinePKPD
 
 
 def plot_optimization_results(patient_id: int,
@@ -121,8 +121,9 @@ def plot_optimization_results(patient_id: int,
     ax2.grid(True, alpha=0.3)
 
     # Set y-axis limit based on actual BP dynamics (excluding equilibrium peaks)
+    min_bp = np.min(bp_values)
     max_bp = np.max(bp_values)
-    ax2.set_ylim(top=max_bp + 5)
+    ax2.set_ylim(bottom=min_bp - 10, top=max_bp + 10)
 
     plt.tight_layout()
     plt.savefig(f'{output_path}/bp_opt.png', dpi=150)

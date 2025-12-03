@@ -146,10 +146,10 @@ class OptimizationConfig:
     use_e0_constraint: bool = False  # If True, E_0 is constrained to E0_indiv; if False, used as initial guess only
 
     # Paths
-    data_dir: str = 'codes/res'
+    data_dir: str = 'results'
     output_dir: str = 'opti'
-    obs_csv_path: str = 'codes/data/joachim.csv'
-    inj_csv_path: str = 'codes/data/injections.csv'
+    obs_csv_path: str = 'data/joachim.csv'
+    inj_csv_path: str = 'data/injections.csv'
 
     # Optimization settings
     ipopt_max_iter: int = 5000

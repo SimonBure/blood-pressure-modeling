@@ -12,7 +12,7 @@ from typing import Dict, Tuple, Optional, List
 # ==============================================================================
 
 def load_observations(patient_ids: Optional[List[int]] = None,
-                     csv_path: str = 'codes/data/joachim.csv') -> Dict[int, Dict]:
+                     csv_path: str = 'data/joachim.csv') -> Dict[int, Dict]:
     """Load observation data for specified patients.
 
     Args:
@@ -55,7 +55,7 @@ def load_observations(patient_ids: Optional[List[int]] = None,
 
 
 def load_injections(patient_ids: Optional[List[int]] = None,
-                   csv_path: str = 'codes/data/injections.csv') -> Dict[int, Tuple]:
+                   csv_path: str = 'data/injections.csv') -> Dict[int, Tuple]:
     """Load injection protocols for specified patients.
 
     Args:
@@ -93,7 +93,7 @@ def load_injections(patient_ids: Optional[List[int]] = None,
 
 
 def load_patient_e0_indiv(patient_ids: Optional[List[int]] = None,
-                          csv_path: str = 'codes/data/joachim.csv') -> Dict[int, float]:
+                          csv_path: str = 'data/joachim.csv') -> Dict[int, float]:
     """Load individual baseline E0 (starting blood pressure) for each patient.
 
     Args:

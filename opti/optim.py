@@ -2,22 +2,22 @@ import casadi as ca
 import numpy as np
 from typing import Dict, Tuple
 
-from .config import OptimizationConfig, PhysiologicalConstants
-from .results import OptimizationResult
-from .cost_functions import create_cost_function
-from ..utils import (
+from opti.config import OptimizationConfig, PhysiologicalConstants
+from opti.results import OptimizationResult
+from opti.cost_functions import create_cost_function
+from utils.datatools import (
     load_observations,
     load_injections,
     load_patient_e0_indiv,
     save_optimal_parameters,
     print_optimization_results
 )
-from ..utils.plots import (
+from utils.plots import (
     plot_optimization_results,
     plot_pkpd_vs_casadi_trajectories,
     plot_injection_verification
 )
-from ..pkpd import NorepinephrinePKPD
+from pkpd import NorepinephrinePKPD
 
 
 def precompute_injection_rates(patient_id: int,
@@ -605,11 +605,11 @@ if __name__ == "__main__":
     output_subdir = 'opti-e0-constraint' if use_e0_constraint else 'opti'
 
     config = OptimizationConfig(
-        patient_ids=[],  # None = all patients, or specify list like [23]
+        patient_ids=[2],  # None = all patients, or specify list like [23]
         max_data_points=1001,
         cost_function_mode='emax',
         use_e0_constraint=use_e0_constraint,  # E_0 constraint mode
-        data_dir='codes/res',
+        data_dir='results',
         output_dir=output_subdir,
         ipopt_max_iter=5000,
         ipopt_tol=1e-6,

@@ -152,7 +152,7 @@ def save_patient_results(patient_id, results, model, observations_dict=None,
     if not save_graph and not save_res:
         return
 
-    output_dir = f'codes/res/patient_{patient_id}/{output_subdir}'
+    output_dir = f'results/patient_{patient_id}/{output_subdir}'
     os.makedirs(output_dir, exist_ok=True)
     time, Ad, Ac, Ap, bp_emax, bp_windkessel = results
 
@@ -199,10 +199,10 @@ def save_patient_results(patient_id, results, model, observations_dict=None,
 
 
 if __name__ == "__main__":
-    from utils import load_observations, load_injections
+    from utils.datatools import load_observations, load_injections
 
     # Patients to simulate (empty list = all patients from observation dataset)
-    patients = [23]  # Example: [23, 20, 15] or [] for all
+    patients = []  # Example: [23, 20, 15] or [] for all
 
     # Output control
     save_graphs = True
@@ -241,7 +241,7 @@ if __name__ == "__main__":
     print(f"  Patient IDs: {patients}")
     print(f"  Save graphs: {save_graphs}")
     print(f"  Save numpy arrays: {save_numpy_results}")
-    print(f"  Output directory: codes/res/patient_<id>/{output_subdirectory}/")
+    print(f"  Output directory: results/patient_<id>/{output_subdirectory}/")
     print("\n  PKPD Model Parameters:")
     print(f"    PK: C_endo={pkpd_model.C_endo}, k_a={pkpd_model.k_a}, V_c={pkpd_model.V_c}, k_12={pkpd_model.k_12}, k_21={pkpd_model.k_21}, k_el={pkpd_model.k_el}")
     print(f"    PD Emax: E_0={pkpd_model.E_0}, E_max={pkpd_model.E_max}, EC_50={pkpd_model.EC_50}")
@@ -277,7 +277,7 @@ if __name__ == "__main__":
     print("\n" + "="*70)
     print("SIMULATION COMPLETED SUCCESSFULLY")
     print("="*70)
-    print(f"  Results saved in: codes/res/patient_<id>/{output_subdirectory}/")
+    print(f"  Results saved in: results/patient_<id>/{output_subdirectory}/")
     if save_graphs:
         print(f"    - Graphs: blood_pressure_evol.png, nor_conc_evol.png")
     if save_numpy_results:
