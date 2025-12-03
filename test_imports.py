@@ -45,6 +45,37 @@ except ImportError as e:
     print("✗ Failed to import pkpd:", e)
     exit(1)
 
+try:
+    from stats.pkpd_parameters import (
+        get_patient_directories,
+        load_all_parameters,
+        compute_statistics
+    )
+    print("✓ stats.pkpd_parameters imported successfully")
+except ImportError as e:
+    print("✗ Failed to import stats.pkpd_parameters:", e)
+    exit(1)
+
+try:
+    from stats.pkpd_quality import (
+        load_patient_covariables,
+        analyze_model_quality
+    )
+    print("✓ stats.pkpd_quality imported successfully")
+except ImportError as e:
+    print("✗ Failed to import stats.pkpd_quality:", e)
+    exit(1)
+
+try:
+    from stats import (
+        get_patient_directories,
+        analyze_model_quality
+    )
+    print("✓ stats package-level imports successful")
+except ImportError as e:
+    print("✗ Failed to import from stats package:", e)
+    exit(1)
+
 print("\n" + "="*60)
 print("SUCCESS! All imports working correctly!")
 print("="*60)

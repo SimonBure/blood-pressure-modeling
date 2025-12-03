@@ -152,7 +152,7 @@ def save_patient_results(patient_id, results, model, observations_dict=None,
     if not save_graph and not save_res:
         return
 
-    output_dir = f'results/patient_{patient_id}/{output_subdir}'
+    output_dir = f'results/patient_{patient_id}/pkpd/{output_subdir}'
     os.makedirs(output_dir, exist_ok=True)
     time, Ad, Ac, Ap, bp_emax, bp_windkessel = results
 
@@ -207,7 +207,7 @@ if __name__ == "__main__":
     # Output control
     save_graphs = True
     save_numpy_results = True
-    output_subdirectory = 'pkpd'
+    output_subdirectory = 'standalone'
 
     print("\n" + "="*70)
     print("PKPD SIMULATION - NOREPINEPHRINE MODEL")
@@ -241,7 +241,7 @@ if __name__ == "__main__":
     print(f"  Patient IDs: {patients}")
     print(f"  Save graphs: {save_graphs}")
     print(f"  Save numpy arrays: {save_numpy_results}")
-    print(f"  Output directory: results/patient_<id>/{output_subdirectory}/")
+    print(f"  Output directory: results/patient_<id>/pkpd/{output_subdirectory}/")
     print("\n  PKPD Model Parameters:")
     print(f"    PK: C_endo={pkpd_model.C_endo}, k_a={pkpd_model.k_a}, V_c={pkpd_model.V_c}, k_12={pkpd_model.k_12}, k_21={pkpd_model.k_21}, k_el={pkpd_model.k_el}")
     print(f"    PD Emax: E_0={pkpd_model.E_0}, E_max={pkpd_model.E_max}, EC_50={pkpd_model.EC_50}")
@@ -277,7 +277,7 @@ if __name__ == "__main__":
     print("\n" + "="*70)
     print("SIMULATION COMPLETED SUCCESSFULLY")
     print("="*70)
-    print(f"  Results saved in: results/patient_<id>/{output_subdirectory}/")
+    print(f"  Results saved in: results/patient_<id>/pkpd/{output_subdirectory}/")
     if save_graphs:
         print(f"    - Graphs: blood_pressure_evol.png, nor_conc_evol.png")
     if save_numpy_results:

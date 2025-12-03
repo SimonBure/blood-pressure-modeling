@@ -2,18 +2,17 @@
 Population-level statistics analysis for optimized PKPD parameters.
 
 This script analyzes optimized parameters across all patients and generates:
-- Mean and standard deviation for each parameter
-- Histograms showing parameter distributions
+- Mean, standard deviation, min, max, and median for each parameter
 - Summary statistics saved to JSON
+- Comparison between optimized E_0 and observed E0_indiv values
 """
 
 import os
 import json
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from typing import Dict, List
-from ..utils import load_patient_e0_indiv
+from utils.datatools import load_patient_e0_indiv
 
 
 def get_patient_directories(res_dir: str) -> List[int]:
@@ -169,101 +168,6 @@ def save_statistics(stats: Dict[str, Dict[str, float]],
     print(f"\nStatistics saved to {json_path}")
 
 
-def plot_histograms(all_params: Dict[int, Dict], output_dir: str) -> None:
-    """Generate and save histograms for each parameter.
-
-    Args:
-        all_params: Dictionary mapping patient_id to params dict.
-        output_dir: Directory to save histogram plots.
-    """
-    hist_dir = os.path.join(output_dir, 'hists')
-    os.makedirs(hist_dir, exist_ok=True)
-
-    # Define which parameters to plot (exclude metadata)
-    metadata_keys = {'patient_id', 'cost_function_mode'}
-    first_patient_params = next(iter(all_params.values()))
-    param_names = [k for k in first_patient_params.keys() if k not in metadata_keys]
-
-    # Group parameters for better visualization
-    param_groups = {
-        'PK Parameters': ['C_endo', 'k_a', 'V_c', 'k_12', 'k_21', 'k_el'],
-        'PD Emax Parameters': ['E_0', 'E_max', 'EC_50'],
-        'PD Windkessel Parameters': ['omega', 'zeta', 'nu'],
-        'Optimization Results': ['n_original_observations', 'n_optimization_points', 'n_observation_points', 'final_cost']
-    }
-
-    # Plot individual histograms
-    print("\nGenerating histograms...")
-    for param_name in param_names:
-        values = np.array([params[param_name] for params in all_params.values()])
-
-        plt.figure(figsize=(10, 6))
-        plt.hist(values, bins='auto', edgecolor='black', alpha=0.7)
-        plt.xlabel(param_name, fontsize=12)
-        plt.ylabel('Frequency', fontsize=12)
-        plt.title(f'Distribution of {param_name} across {len(all_params)} patients', fontsize=14)
-
-        # Add statistics to plot
-        mean_val = np.mean(values)
-        std_val = np.std(values)
-        plt.axvline(mean_val, color='red', linestyle='--', linewidth=2,
-                   label=f'Mean: {mean_val:.4f}')
-        plt.axvline(mean_val - std_val, color='orange', linestyle=':', linewidth=1.5,
-                   label=f'Mean - Std: {mean_val - std_val:.4f}')
-        plt.axvline(mean_val + std_val, color='orange', linestyle=':', linewidth=1.5,
-                   label=f'Mean + Std: {mean_val + std_val:.4f}')
-
-        plt.legend(loc='upper right')
-        plt.grid(True, alpha=0.3)
-        plt.tight_layout()
-
-        hist_path = os.path.join(hist_dir, f'{param_name}_distribution.png')
-        plt.savefig(hist_path, dpi=150)
-        plt.close()
-
-    # Create combined plots for each parameter group
-    for group_name, group_params in param_groups.items():
-        available_params = [p for p in group_params if p in param_names]
-        if not available_params:
-            continue
-
-        n_params = len(available_params)
-        n_cols = min(3, n_params)
-        n_rows = (n_params + n_cols - 1) // n_cols
-
-        fig, axes = plt.subplots(n_rows, n_cols, figsize=(5*n_cols, 4*n_rows))
-        if n_params == 1:
-            axes = np.array([axes])
-        axes = axes.flatten()
-
-        for idx, param_name in enumerate(available_params):
-            values = np.array([params[param_name] for params in all_params.values()])
-
-            axes[idx].hist(values, bins='auto', edgecolor='black', alpha=0.7)
-            axes[idx].set_xlabel(param_name, fontsize=10)
-            axes[idx].set_ylabel('Frequency', fontsize=10)
-            axes[idx].set_title(param_name, fontsize=11, fontweight='bold')
-
-            mean_val = np.mean(values)
-            axes[idx].axvline(mean_val, color='red', linestyle='--', linewidth=2)
-            axes[idx].grid(True, alpha=0.3)
-
-        # Hide empty subplots
-        for idx in range(n_params, len(axes)):
-            axes[idx].set_visible(False)
-
-        fig.suptitle(f'{group_name} Distribution (n={len(all_params)} patients)',
-                    fontsize=14, fontweight='bold')
-        plt.tight_layout()
-
-        group_filename = group_name.lower().replace(' ', '_') + '_combined.png'
-        combined_path = os.path.join(hist_dir, group_filename)
-        plt.savefig(combined_path, dpi=150)
-        plt.close()
-
-    print(f"Histograms saved to {hist_dir}/")
-
-
 def compare_e0_optimized_vs_observed(all_params: Dict[int, Dict],
                                       output_dir: str) -> None:
     """Compare optimized E_0 values against observed values from joachim.csv.
@@ -333,13 +237,13 @@ def compare_e0_optimized_vs_observed(all_params: Dict[int, Dict],
 def main():
     """Main function to run population statistics analysis."""
     # Configuration
-    res_dir = 'codes/res'
-    use_e0_constraint = True  # Toggle E_0 constraint mode
-    
+    res_dir = 'results'
+    use_e0_constraint = False  # Toggle E_0 constraint mode
+
     opti_subdir = 'opti-e0-constraint' if use_e0_constraint else 'opti'
-    
-    output_dir = '0_population-e0-constraint' if use_e0_constraint else '0_population' 
-    output_dir = os.path.join(res_dir, output_dir)
+
+    # Output to results/stats/pkpd-parameters/{opti_subdir}/
+    output_dir = os.path.join(res_dir, 'stats', 'pkpd-parameters', opti_subdir)
 
     # Choose which optimization results to analyze:
     # 'opti' = E_0 as initial guess (optimized)
@@ -373,7 +277,7 @@ def main():
         return
 
     # Compare E_0 optimized vs observed
-    compare_e0_optimized_vs_observed(all_params, res_dir)
+    compare_e0_optimized_vs_observed(all_params, output_dir)
 
     # Compute statistics
     print("\nComputing statistics...")
@@ -385,15 +289,12 @@ def main():
     # Save statistics
     save_statistics(stats, output_dir, len(all_params))
 
-    # Generate histograms
-    plot_histograms(all_params, output_dir)
-
     print("\n" + "="*80)
     print("ANALYSIS COMPLETE")
     print("="*80)
     print(f"Results saved in: {output_dir}/")
     print(f"  - stats.json: Summary statistics")
-    print(f"  - hists/: Parameter distribution histograms")
+    print(f"  - e0_comparison.csv: E_0 comparison table")
     print("="*80 + "\n")
 
 

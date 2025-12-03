@@ -1,5 +1,6 @@
 import casadi as ca
 import numpy as np
+import os
 from typing import Dict, Tuple
 
 from opti.config import OptimizationConfig, PhysiologicalConstants
@@ -564,6 +565,33 @@ def resimulate_with_optimized_params(patient_id: int,
     return t, Ad, Ac, Ap, E_emax, E_windkessel
 
 
+def save_resimulated_trajectories(patient_id: int,
+                                  resim_results: Tuple,
+                                  data_dir: str,
+                                  output_dir: str) -> None:
+    """Save resimulated PKPD trajectories to disk.
+
+    Args:
+        patient_id: Patient ID
+        resim_results: Tuple of (t, Ad, Ac, Ap, E_emax, E_windkessel)
+        data_dir: Base data directory (e.g., 'results')
+        output_dir: Output subdirectory (e.g., 'opti')
+    """
+    output_path = f'{data_dir}/patient_{patient_id}/pkpd/{output_dir}'
+    os.makedirs(output_path, exist_ok=True)
+
+    t, Ad, Ac, Ap, E_emax, E_windkessel = resim_results
+
+    np.save(f'{output_path}/time.npy', t)
+    np.save(f'{output_path}/Ad.npy', Ad)
+    np.save(f'{output_path}/Ac.npy', Ac)
+    np.save(f'{output_path}/Ap.npy', Ap)
+    np.save(f'{output_path}/bp_emax.npy', E_emax)
+    np.save(f'{output_path}/bp_windkessel.npy', E_windkessel)
+
+    print(f"  ✓ Resimulated trajectories saved to {output_path}/")
+
+
 def get_initial_guess_from_pkpd(patient_id: int,
                                 times: np.ndarray,
                                 data_dir: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -579,9 +607,9 @@ def get_initial_guess_from_pkpd(patient_id: int,
     Returns:
         Tuple of (Ad_data, Ac_data, Ap_data, E_data) arrays interpolated to observation times.
     """
-    pkpd_path = f'{data_dir}/patient_{patient_id}/pkpd'
+    pkpd_path = f'{data_dir}/patient_{patient_id}/pkpd/standalone'
 
-    # Load full trajectories from pkpd/ directory
+    # Load full trajectories from pkpd/standalone/ directory
     time_full = np.load(f'{pkpd_path}/time.npy')
     Ad_full = np.load(f'{pkpd_path}/Ad.npy')
     Ac_full = np.load(f'{pkpd_path}/Ac.npy')
@@ -605,7 +633,7 @@ if __name__ == "__main__":
     output_subdir = 'opti-e0-constraint' if use_e0_constraint else 'opti'
 
     config = OptimizationConfig(
-        patient_ids=[2],  # None = all patients, or specify list like [23]
+        patient_ids=[],  # None = all patients, or specify list like [23]
         max_data_points=1001,
         cost_function_mode='emax',
         use_e0_constraint=use_e0_constraint,  # E_0 constraint mode
@@ -748,6 +776,12 @@ if __name__ == "__main__":
             patient_id, result.trajectories, result.params, injections_dict
         )
         print("  ✓ Re-simulation completed")
+
+        print("\nStep 7b: Saving resimulated trajectories...")
+        save_resimulated_trajectories(
+            patient_id, resim_results,
+            config.data_dir, config.output_dir
+        )
 
         # Compute equilibrium blood pressure
         E_equilibrium = compute_equilibrium_blood_pressure(
