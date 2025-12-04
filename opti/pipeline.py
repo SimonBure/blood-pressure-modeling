@@ -448,8 +448,8 @@ if __name__ == "__main__":
     output_subdir = 'opti-e0-constraint' if use_e0_constraint else 'opti'
 
     config = OptimizationConfig(
-        patient_ids=[],  # None = all patients, or specify list like [23]
-        max_data_points=1001,
+        patient_ids=[18, 19, 20, 22, 23, 24, 25, 27, 31],  # None = all patients, or specify list like [23]
+        max_data_points=5000,
         cost_function_mode='emax',
         use_e0_constraint=use_e0_constraint,
         data_dir='results',
@@ -460,8 +460,8 @@ if __name__ == "__main__":
     )
 
     # Select pipeline mode
-    # mode = 'full'             # Complete pipeline: data prep -> optim -> resim -> plots
-    mode = 'resim_and_plot'   # Load params, resimulate, save, and plot
+    mode = 'full'             # Complete pipeline: data prep -> optim -> resim -> plots
+    # mode = 'resim_and_plot'   # Load params, resimulate, save, and plot
     # mode = 'plot_only'        # Load trajectories and create plots only
 
     # Run pipeline
