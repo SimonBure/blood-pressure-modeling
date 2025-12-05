@@ -36,7 +36,7 @@ from utils.plots import (
     plot_pkpd_vs_casadi_trajectories,
     plot_injection_verification
 )
-from opti.optim import compute_equilibrium_blood_pressure
+from opti.data_preparation import compute_equilibrium_blood_pressure
 
 
 def run_pipeline(config: OptimizationConfig, mode: str = 'full') -> None:
@@ -448,7 +448,7 @@ if __name__ == "__main__":
     output_subdir = 'opti-e0-constraint' if use_e0_constraint else 'opti'
 
     config = OptimizationConfig(
-        patient_ids=[18, 19, 20, 22, 23, 24, 25, 27, 31],  # None = all patients, or specify list like [23]
+        patient_ids=[1, 2, 3, 4],  # None = all patients, or specify list like [23]
         max_data_points=5000,
         cost_function_mode='emax',
         use_e0_constraint=use_e0_constraint,
