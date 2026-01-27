@@ -42,6 +42,26 @@ class PhysiologicalConstants:
     FIGSIZE_COMPARISON = (16, 10)
     DPI = 150
 
+    # Paper-based parameter bounds (Table 2, log-normal mu +/- 3*sigma)
+    # Bounds calculated as: lower = mu * exp(-3*sigma), upper = mu * exp(+3*sigma)
+    PAPER_PARAM_BOUNDS = {
+        # PK parameters
+        'C_endo': (0.175, 3.743),    # nmol/L, mu=0.81, sigma=0.51
+        'k_a': (0.00285, 0.1404),    # 1/s, mu=0.02, sigma=0.65
+        'V_c': (0.166, 1.444),       # L, mu=0.49, sigma=0.36
+        'k_12': (0.0259, 0.139),     # 1/s, mu=0.06, sigma=0.28
+        'k_21': (0.007, 0.228),      # 1/s, mu=0.04, sigma=0.58
+        'k_el': (0.0197, 0.127),     # 1/s, mu=0.05, sigma=0.31
+        # PD Emax parameters
+        'E_0': (29.53, 110.4),       # mmHg, mu=57.09, sigma=0.22
+        'E_max': (24.54, 524.7),     # mmHg, mu=113.52, sigma=0.51
+        'EC_50': (2.67, 92.3),       # nmol/L, mu=15.7, sigma=0.59
+        # PD Windkessel parameters
+        'omega': (0.554, 1.841),     # rad/s, mu=1.01, sigma=0.2
+        'zeta': (2.68, 140.9),       # dimensionless, mu=19.44, sigma=0.66
+        'nu': (0.639, 7.04),         # mmHg/(nmol/L), mu=2.12, sigma=0.4
+    }
+
     # Convenience properties for cleaner access
     @property
     def Ad_0(self) -> float:
@@ -123,6 +143,8 @@ class OptimizationConfig:
         cost_function_mode: Cost function type - 'emax', 'windkessel', or 'both'.
         use_e0_constraint: If True, E_0 is constrained to patient's E0_indiv (hard constraint).
             If False, E0_indiv is used only as initial guess. Results saved to different directories.
+        use_paper_bounds: If True, applies biologically realistic bounds from paper (mu +/- 3*sigma).
+            Results are saved to 'opti-constrained' instead of 'opti'.
         data_dir: Base directory for patient data.
         output_dir: Output subdirectory name within patient directories.
         obs_csv_path: Path to observations CSV file.
@@ -144,6 +166,7 @@ class OptimizationConfig:
     # Model configuration
     cost_function_mode: str = 'emax'
     use_e0_constraint: bool = False  # If True, E_0 is constrained to E0_indiv; if False, used as initial guess only
+    use_paper_bounds: bool = False  # If True, uses biologically realistic bounds from paper (mu +/- 3*sigma)
 
     # Paths
     data_dir: str = 'results'
@@ -163,24 +186,33 @@ class OptimizationConfig:
 
     def __post_init__(self):
         """Initialize default parameter bounds if not provided."""
+        # Auto-set output directory based on paper bounds flag
+        if self.output_dir == 'opti' and self.use_paper_bounds:
+            self.output_dir = 'opti-constrained'
+
         if not self.param_bounds:
-            self.param_bounds = {
-                # PK parameters - all non-negative
-                'C_endo': (0, None),
-                'k_a': (0, None),
-                'V_c': (1e-6, None),  # Strictly positive (avoid division by zero)
-                'k_12': (0, None),
-                'k_21': (0, None),
-                'k_el': (0, None),
-                # PD Emax parameters - all positive
-                'E_0': (1e-6, None),
-                'E_max': (1e-6, None),  # E_max > E_0 enforced separately
-                'EC_50': (1e-6, None),
-                # PD Windkessel parameters - all positive
-                'omega': (1e-6, None),
-                'zeta': (1e-6, None),
-                'nu': (1e-6, None),
-            }
+            if self.use_paper_bounds:
+                # Use biologically realistic bounds from paper (mu +/- 3*sigma)
+                self.param_bounds = PhysiologicalConstants.PAPER_PARAM_BOUNDS.copy()
+            else:
+                # Default bounds (non-negativity only)
+                self.param_bounds = {
+                    # PK parameters - all non-negative
+                    'C_endo': (0, None),
+                    'k_a': (0, None),
+                    'V_c': (1e-6, None),  # Strictly positive (avoid division by zero)
+                    'k_12': (0, None),
+                    'k_21': (0, None),
+                    'k_el': (0, None),
+                    # PD Emax parameters - all positive
+                    'E_0': (1e-6, None),
+                    'E_max': (1e-6, None),  # E_max > E_0 enforced separately
+                    'EC_50': (1e-6, None),
+                    # PD Windkessel parameters - all positive
+                    'omega': (1e-6, None),
+                    'zeta': (1e-6, None),
+                    'nu': (1e-6, None),
+                }
 
         # Validate cost function mode
         valid_modes = ['emax', 'windkessel', 'both']

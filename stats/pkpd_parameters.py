@@ -249,82 +249,16 @@ def plot_boxplots(all_params: Dict[int, Dict], output_dir: str) -> None:
     print(f"  ✓ Generated {n_plots} boxplots in {boxplot_dir}/")
 
 
-def compare_e0_optimized_vs_observed(all_params: Dict[int, Dict],
-                                      output_dir: str) -> None:
-    """Compare optimized E_0 values against observed values from joachim.csv.
-
-    Args:
-        all_params: Dictionary mapping patient_id to params dict.
-        output_dir: Directory to save comparison results.
-    """
-    # Load observed E_0 from joachim.csv using utility function
-    patient_ids = list(all_params.keys())
-    observed_e0 = load_patient_e0_indiv(patient_ids)
-
-    # Build comparison data
-    comparison_data = []
-    for pid in sorted(all_params.keys()):
-        optimized_e0 = all_params[pid]['E_0']
-        obs_e0 = observed_e0.get(pid, np.nan)
-        diff = optimized_e0 - obs_e0 if not np.isnan(obs_e0) else np.nan
-        pct_diff = (diff / obs_e0 * 100) if obs_e0 != 0 and not np.isnan(obs_e0) else np.nan
-
-        comparison_data.append({
-            'patient_id': pid,
-            'E0_optimized': optimized_e0,
-            'E0_observed': obs_e0,
-            'difference': diff,
-            'pct_difference': pct_diff
-        })
-
-    comparison_df = pd.DataFrame(comparison_data)
-
-    # Print table
-    print("\n" + "="*80)
-    print("E_0 COMPARISON: OPTIMIZED VS OBSERVED (joachim.csv)")
-    print("="*80)
-    print(f"{'Patient':<10} {'Optimized':>15} {'Observed':>15} {'Diff':>12} {'% Diff':>10}")
-    print("-"*80)
-
-    for _, row in comparison_df.iterrows():
-        pid = int(row['patient_id'])
-        opt = row['E0_optimized']
-        obs = row['E0_observed']
-        diff = row['difference']
-        pct = row['pct_difference']
-
-        if np.isnan(obs):
-            print(f"{pid:<10} {opt:>15.6f} {'N/A':>15} {'N/A':>12} {'N/A':>10}")
-        else:
-            print(f"{pid:<10} {opt:>15.6f} {obs:>15.6f} {diff:>12.6f} {pct:>9.2f}%")
-
-    # Summary statistics
-    valid_diffs = comparison_df['difference'].dropna()
-    if len(valid_diffs) > 0:
-        print("-"*80)
-        print(f"{'Mean diff':<10} {'':<15} {'':<15} {valid_diffs.mean():>12.6f}")
-        print(f"{'Std diff':<10} {'':<15} {'':<15} {valid_diffs.std():>12.6f}")
-        print(f"{'MAE':<10} {'':<15} {'':<15} {valid_diffs.abs().mean():>12.6f}")
-
-    print("="*80)
-
-    # Save to CSV
-    os.makedirs(output_dir, exist_ok=True)
-    csv_path = os.path.join(output_dir, 'e0_comparison.csv')
-    comparison_df.to_csv(csv_path, index=False)
-    print(f"\nE_0 comparison saved to {csv_path}")
-
-
 def main():
     """Main function to run population statistics analysis."""
     # Configuration
     res_dir = 'results'
-    use_e0_constraint = False  # Toggle E_0 constraint mode
+    is_constrained = True  # Toggle E_0 constraint mode
 
-    opti_subdir = 'opti-e0-constraint' if use_e0_constraint else 'opti'
+    opti_subdir = 'opti-constrained' if is_constrained else 'opti'
 
     # Output to results/stats/pkpd-parameters/ (simplified path)
-    output_dir = os.path.join(res_dir, 'stats', 'pkpd-parameters')
+    output_dir = os.path.join(res_dir, 'stats', 'pkpd-parameters', opti_subdir)
 
     # Choose which optimization results to analyze:
     # 'opti' = E_0 as initial guess (optimized)
@@ -357,8 +291,6 @@ def main():
         print(f"\nERROR: {e}")
         return
 
-    # Compare E_0 optimized vs observed
-    compare_e0_optimized_vs_observed(all_params, output_dir)
 
     # Compute statistics
     print("\nComputing statistics...")

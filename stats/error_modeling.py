@@ -11,15 +11,41 @@ import os
 from datetime import datetime
 
 
-def save_models_analysis(models_data, output_dir):
+# ============================================================================
+# USER CONFIGURATION
+# ============================================================================
+chosen_metric = 'mae'  # Options: 'mae', 'rmse', 'mse', 'mape', etc.
+family = sm.families.Gamma(link=sm.families.links.Log())  # GLM family
+link_function = sm.families.links.Log()  # Link function
+alpha = 0.05  # Significance level (Type I error rate)
+# ============================================================================
+
+
+def get_metric_units(metric_name):
+    """
+    Determine units based on metric name.
+
+    Args:
+        metric_name: Name of the error metric
+
+    Returns:
+        str: Units for the metric ('mmHg' or 'mmHg²')
+    """
+    if 'square' in metric_name.lower() or 'sq' in metric_name.lower() or metric_name.lower() in ['mse', 'rmse']:
+        return 'mmHg²'
+    return 'mmHg'
+
+
+def save_models_analysis(models_data, output_dir, chosen_metric):
     """
     Save model analysis results to JSON file.
 
     Args:
         models_data: List of dictionaries containing model results
         output_dir: Directory name (e.g., 'canonical-link', 'log-link')
+        chosen_metric: Name of the error metric
     """
-    output_path = f"results/stats/mae-models/{output_dir}/performance.json"
+    output_path = f"results/stats/{chosen_metric}-models/{output_dir}/performance.json"
 
     json_data = {
         "analysis_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -60,7 +86,54 @@ def extract_significant_covariates(results, alpha=0.05):
     return significant_covs
 
 
-def complete_glm_model_analysis(dataframe, formula, family, output, output_dir, alpha=0.05):
+def plot_error_distribution(df, chosen_metric, output_path=None):
+    """
+    Create histogram of error metric distribution for all patients.
+
+    Args:
+        df: DataFrame containing error metric
+        chosen_metric: Name of the error metric column
+        output_path: Path to save the figure (auto-generated if None)
+    """
+    if output_path is None:
+        output_path = f"results/stats/{chosen_metric}-models/hist.png"
+
+    metric_data = df[chosen_metric]
+    units = get_metric_units(chosen_metric)
+
+    # Calculate statistics
+    mean_val = metric_data.mean()
+    median_val = metric_data.median()
+    std_val = metric_data.std()
+
+    # Create histogram
+    plt.figure(figsize=(10, 6))
+    plt.hist(metric_data, bins=20, alpha=0.7, color='skyblue', edgecolor='black')
+
+    # Add vertical lines for mean and median
+    plt.axvline(mean_val, color='red', linestyle='--', linewidth=2, label=f'Mean = {mean_val:.2f}')
+    plt.axvline(median_val, color='green', linestyle='--', linewidth=2, label=f'Median = {median_val:.2f}')
+
+    # Add statistics text box
+    stats_text = f'Mean: {mean_val:.2f} {units}\nMedian: {median_val:.2f} {units}\nStd: {std_val:.2f} {units}\nN: {len(metric_data)}'
+    plt.text(0.98, 0.97, stats_text, transform=plt.gca().transAxes,
+            verticalalignment='top', horizontalalignment='right',
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8),
+            fontsize=11)
+
+    plt.xlabel(f'{chosen_metric.upper()} ({units})', fontsize=12)
+    plt.ylabel('Frequency', fontsize=12)
+    plt.title(f'Distribution of {chosen_metric.upper()} Across All Patients', fontsize=14, fontweight='bold')
+    plt.legend(fontsize=10)
+    plt.grid(True, alpha=0.3, axis='y')
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"✓ {chosen_metric.upper()} distribution plot saved to {output_path}")
+
+
+def complete_glm_model_analysis(dataframe, formula, family, output_dir, alpha=0.05):
     """
     Complete GLM model analysis with diagnostics and statistics extraction.
 
@@ -68,7 +141,6 @@ def complete_glm_model_analysis(dataframe, formula, family, output, output_dir, 
         dataframe: Input data
         formula: Model formula string
         family: GLM family object
-        output: Output name for plots and results
         output_dir: Directory for saving outputs
         alpha: Significance level (Type I error rate), default 0.05
 
@@ -81,7 +153,7 @@ def complete_glm_model_analysis(dataframe, formula, family, output, output_dir, 
 
         # Check convergence
         if not results.converged:
-            print(f"⚠ WARNING: Model '{output}' failed to converge.")
+            print(f"⚠ WARNING: Model '{formula}' failed to converge.")
             return None
 
         # Extract pseudo R-squared (McFadden's)
@@ -102,7 +174,6 @@ def complete_glm_model_analysis(dataframe, formula, family, output, output_dir, 
         significant_covariates = extract_significant_covariates(results, alpha=alpha)
 
         return {
-            'name': output,
             'formula': formula,
             'deviance': float(results.deviance),
             'aic': float(results.aic),
@@ -112,19 +183,24 @@ def complete_glm_model_analysis(dataframe, formula, family, output, output_dir, 
         }
 
     except Exception as e:
-        print(f"⚠ WARNING: Model '{output}' encountered error: {str(e)}. Skipping...")
+        print(f"⚠ WARNING: Model '{formula}' encountered error: {str(e)}. Skipping...")
         return None
 
 
-def plot_mae_vs_quantitative_covariates(df, quantitative_covariates, output_path="results/stats/mae-models/mae_vs_quantitative_covariates.png"):
+def plot_error_vs_quantitative_covariates(df, quantitative_covariates, chosen_metric, output_path=None):
     """
-    Create scatter plots of MAE vs all quantitative covariates.
+    Create scatter plots of error metric vs all quantitative covariates.
 
     Args:
-        df: DataFrame containing MAE and covariates
+        df: DataFrame containing error metric and covariates
         quantitative_covariates: List of quantitative covariate names
-        output_path: Path to save the figure
+        chosen_metric: Name of the error metric column
+        output_path: Path to save the figure (auto-generated if None)
     """
+    if output_path is None:
+        output_path = f"results/stats/{chosen_metric}-models/{chosen_metric}_vs_quantitative_covariates.png"
+
+    units = get_metric_units(chosen_metric)
     n_covariates = len(quantitative_covariates)
     n_cols = 3
     n_rows = (n_covariates + n_cols - 1) // n_cols  # Ceiling division
@@ -134,20 +210,20 @@ def plot_mae_vs_quantitative_covariates(df, quantitative_covariates, output_path
 
     for idx, covariate in enumerate(quantitative_covariates):
         ax = axes[idx]
-        ax.scatter(df[covariate], df['mae'], alpha=0.6, s=50)
+        ax.scatter(df[covariate], df[chosen_metric], alpha=0.6, s=50)
 
         # Add trend line
-        z = np.polyfit(df[covariate], df['mae'], 1)
+        z = np.polyfit(df[covariate], df[chosen_metric], 1)
         p = np.poly1d(z)
         x_line = np.linspace(df[covariate].min(), df[covariate].max(), 100)
         ax.plot(x_line, p(x_line), "r--", alpha=0.8, linewidth=2)
 
         # Calculate correlation
-        corr = df[covariate].corr(df['mae'])
+        corr = df[covariate].corr(df[chosen_metric])
 
         ax.set_xlabel(f'{covariate} (standardized)', fontsize=11)
-        ax.set_ylabel('MAE (mmHg)', fontsize=11)
-        ax.set_title(f'MAE vs {covariate}\n(r = {corr:.3f})', fontsize=12, fontweight='bold')
+        ax.set_ylabel(f'{chosen_metric.upper()} ({units})', fontsize=11)
+        ax.set_title(f'{chosen_metric.upper()} vs {covariate}\n(r = {corr:.3f})', fontsize=12, fontweight='bold')
         ax.grid(True, alpha=0.3)
 
     # Hide unused subplots
@@ -158,18 +234,23 @@ def plot_mae_vs_quantitative_covariates(df, quantitative_covariates, output_path
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
     plt.close()
-    print(f"✓ MAE vs quantitative covariates plot saved to {output_path}")
+    print(f"✓ {chosen_metric.upper()} vs quantitative covariates plot saved to {output_path}")
 
 
-def plot_mae_vs_binary_covariates(df, binary_covariates, output_path="results/stats/mae-models/mae_vs_binary_covariates.png"):
+def plot_error_vs_binary_covariates(df, binary_covariates, chosen_metric, output_path=None):
     """
-    Create boxplots of MAE vs all binary covariates.
+    Create boxplots of error metric vs all binary covariates.
 
     Args:
-        df: DataFrame containing MAE and covariates
+        df: DataFrame containing error metric and covariates
         binary_covariates: List of binary covariate names
-        output_path: Path to save the figure
+        chosen_metric: Name of the error metric column
+        output_path: Path to save the figure (auto-generated if None)
     """
+    if output_path is None:
+        output_path = f"results/stats/{chosen_metric}-models/{chosen_metric}_vs_binary_covariates.png"
+
+    units = get_metric_units(chosen_metric)
     n_covariates = len(binary_covariates)
     n_cols = 2
     n_rows = (n_covariates + n_cols - 1) // n_cols  # Ceiling division
@@ -181,8 +262,8 @@ def plot_mae_vs_binary_covariates(df, binary_covariates, output_path="results/st
         ax = axes[idx]
 
         # Separate data by binary value
-        data_0 = df[df[covariate] == 0]['mae']
-        data_1 = df[df[covariate] == 1]['mae']
+        data_0 = df[df[covariate] == 0][chosen_metric]
+        data_1 = df[df[covariate] == 1][chosen_metric]
 
         # Create boxplot
         bp = ax.boxplot([data_0, data_1],
@@ -209,9 +290,9 @@ def plot_mae_vs_binary_covariates(df, binary_covariates, output_path="results/st
         n_0, n_1 = len(data_0), len(data_1)
         mean_0, mean_1 = data_0.mean(), data_1.mean()
 
-        ax.set_ylabel('MAE (mmHg)', fontsize=11)
+        ax.set_ylabel(f'{chosen_metric.upper()} ({units})', fontsize=11)
         ax.set_xlabel(covariate.upper(), fontsize=11)
-        ax.set_title(f'MAE vs {covariate.upper()}\n(n={n_0}/{n_1}, μ={mean_0:.2f}/{mean_1:.2f})',
+        ax.set_title(f'{chosen_metric.upper()} vs {covariate.upper()}\n(n={n_0}/{n_1}, μ={mean_0:.2f}/{mean_1:.2f})',
                     fontsize=12, fontweight='bold')
         ax.grid(True, alpha=0.3, axis='y')
         ax.legend(loc='upper right', fontsize=9)
@@ -224,33 +305,38 @@ def plot_mae_vs_binary_covariates(df, binary_covariates, output_path="results/st
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
     plt.close()
-    print(f"✓ MAE vs binary covariates plot saved to {output_path}")
+    print(f"✓ {chosen_metric.upper()} vs binary covariates plot saved to {output_path}")
 
 
-def plot_residuals(results, df, output="residuals", output_dir="canonical-link"):
+def plot_residuals(results, df, chosen_metric, output="residuals", output_dir="canonical-link"):
+    """Plot residuals (kept for potential future use)."""
     residuals = results.resid_deviance
-
     predictions = results.predict(df)
+    units = get_metric_units(chosen_metric)
 
     plt.figure(figsize=(10, 4))
     plt.scatter(predictions, residuals)
     plt.axhline(0, color="red", linestyle="--")
-    plt.xlabel("Predicted MAE")
+    plt.xlabel(f"Predicted {chosen_metric.upper()}")
     plt.ylabel("Deviance Residuals")
     plt.title("Residual Plot")
-    plt.savefig(f"results/stats/mae-models/{output_dir}/{output}.png")
+    plt.savefig(f"results/stats/{chosen_metric}-models/{output_dir}/{output}.png")
 
 
-def qq_plot(results, output="qq", output_dir="canonical-link"):
+def qq_plot(results, chosen_metric, output="qq", output_dir="canonical-link"):
+    """Create Q-Q plot (kept for potential future use)."""
     residuals = results.resid_deviance
 
     plt.figure(figsize=(10, 4))
     stats.probplot(residuals, dist="norm", plot=plt)
     plt.title("Q-Q Plot")
-    plt.savefig(f"results/stats/mae-models/{output_dir}/{output}.png")
+    plt.savefig(f"results/stats/{chosen_metric}-models/{output_dir}/{output}.png")
 
 
-path_quality = f"results/stats/pkpd-quality/opti/mae_vs_covariates.csv"
+# ============================================================================
+# DATA LOADING AND PREPROCESSING
+# ============================================================================
+path_quality = f"results/stats/pkpd-quality/opti/{chosen_metric}_vs_covariates.csv"
 df = pd.read_csv(path_quality)
 
 df["bmi"] = df["weight"] / (df["height"] / 100) ** 2
@@ -268,34 +354,41 @@ for bc in binary_covariates:
         df[bc] = [1 if data == "y" else 0 for data in df[bc]]
     else:
         df[bc] = [1 if data == "f" else 0 for data in df[bc]]
-        
-# Create exploratory visualizations
+
+
+# ============================================================================
+# EXPLORATORY DATA ANALYSIS
+# ============================================================================
 print("\n" + "="*70)
-print("EXPLORATORY DATA ANALYSIS: MAE vs Covariates")
+print(f"EXPLORATORY DATA ANALYSIS: {chosen_metric.upper()} vs Covariates")
 print("="*70 + "\n")
 
-plot_mae_vs_quantitative_covariates(df, quantitative_covariates)
-plot_mae_vs_binary_covariates(df, binary_covariates)
+plot_error_distribution(df, chosen_metric)
+plot_error_vs_quantitative_covariates(df, quantitative_covariates, chosen_metric)
+plot_error_vs_binary_covariates(df, binary_covariates, chosen_metric)
 
 print("\n" + "="*70)
 print("STATISTICAL MODELING")
 print("="*70 + "\n")
 
 
+# ============================================================================
+# STATISTICAL MODELING
+# ============================================================================
 # Define models to test
 to_test_model_formulae = [
-    f"mae ~ 1",
-    f"mae ~ DFG",
-    f"mae ~ HTA",
-    f"mae ~ IECARA",
-    f"mae ~ age",
-    f"mae ~ sex",
-    f"mae ~ bmi",
-    f"mae ~ age + sex + bmi + DFG + HTA + IECARA",
+    f"{chosen_metric} ~ 1",
+    f"{chosen_metric} ~ DFG",
+    f"{chosen_metric} ~ HTA",
+    f"{chosen_metric} ~ IECARA",
+    f"{chosen_metric} ~ age",
+    f"{chosen_metric} ~ sex",
+    f"{chosen_metric} ~ bmi",
+    f"{chosen_metric} ~ age + sex + bmi + DFG + HTA + IECARA",
 ]
 
-link_function = sm.families.links.Log()
-
+# TODO modify the dir to match the link function
+# TODO TEST
 output_dir = (
     "log-link"
     if type(link_function) is statsmodels.genmod.families.links.Log
@@ -304,7 +397,6 @@ output_dir = (
 
 # Run all models and collect results
 models_results = []
-alpha = 0.05  # Significance level (Type I error rate)
 
 for formula in to_test_model_formulae:
     print(f"\n{'#'*70}")
@@ -314,8 +406,7 @@ for formula in to_test_model_formulae:
     result = complete_glm_model_analysis(
         dataframe=df,
         formula=formula,
-        family=sm.families.Gamma(link=link_function),
-        output="",
+        family=family,
         output_dir=output_dir,
         alpha=alpha
     )
@@ -325,7 +416,7 @@ for formula in to_test_model_formulae:
 
 # Save all successful models to JSON
 if models_results:
-    save_models_analysis(models_results, output_dir)
-    print(f"\n✓ Pipeline complete: {len(models_results)}/{len(names)} models saved")
+    save_models_analysis(models_results, output_dir, chosen_metric)
+    print(f"\n✓ Pipeline complete: {len(models_results)}/{len(to_test_model_formulae)} models saved")
 else:
     print("\n⚠ No models converged successfully. No results saved.")

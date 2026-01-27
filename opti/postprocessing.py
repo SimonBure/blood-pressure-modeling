@@ -123,49 +123,6 @@ def load_optimized_parameters(patient_id: int,
     return params_data
 
 
-def load_resimulated_trajectories(patient_id: int,
-                                  data_dir: str,
-                                  output_dir: str) -> Tuple:
-    """Load resimulated trajectories from disk.
-
-    Args:
-        patient_id: Patient ID.
-        data_dir: Base data directory (e.g., 'results').
-        output_dir: Output subdirectory (e.g., 'opti').
-
-    Returns:
-        Tuple of (t, Ad, Ac, Ap, E_emax, E_windkessel) arrays.
-
-    Raises:
-        FileNotFoundError: If trajectory files don't exist.
-    """
-    traj_path = f'{data_dir}/patient_{patient_id}/pkpd/{output_dir}'
-    time_file = f'{traj_path}/time.npy'
-
-    if not os.path.exists(time_file):
-        raise FileNotFoundError(
-            f"\nERROR: Cannot run plot-only mode for patient {patient_id}\n"
-            f"  Missing: {traj_path}/*.npy\n"
-            f"  → Run resimulation first with mode='resim_and_plot' or mode='full'"
-        )
-
-    try:
-        t = np.load(f'{traj_path}/time.npy')
-        Ad = np.load(f'{traj_path}/Ad.npy')
-        Ac = np.load(f'{traj_path}/Ac.npy')
-        Ap = np.load(f'{traj_path}/Ap.npy')
-        E_emax = np.load(f'{traj_path}/bp_emax.npy')
-        E_windkessel = np.load(f'{traj_path}/bp_windkessel.npy')
-    except FileNotFoundError as e:
-        raise FileNotFoundError(
-            f"\nERROR: Incomplete trajectory files for patient {patient_id}\n"
-            f"  Missing: {traj_path}/*.npy\n"
-            f"  → Run resimulation with mode='resim_and_plot' or mode='full'"
-        ) from e
-
-    return t, Ad, Ac, Ap, E_emax, E_windkessel
-
-
 def run_resimulation(patient_id: int,
                     params_opt: Dict[str, float],
                     injections_dict: Dict,

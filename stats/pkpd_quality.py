@@ -14,76 +14,28 @@ import os
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Tuple
-from utils.datatools import load_observations
+from utils.datatools import load_observations, load_patient_covariates, load_resimulated_trajectories
 
 
-def load_patient_covariables(patient_ids: List[int],
-                             csv_path: str = 'data/joachim.csv') -> pd.DataFrame:
-    """Load biological covariables for each patient from joachim.csv.
+def compute_patient_mean_err(patient_id: int, observations: Dict, resim_bp: np.ndarray
+) -> float:
+    bp_obs_data = observations[patient_id]["blood_pressure"]
+    obs_bp = np.array([v for _, v in bp_obs_data])
+        
+    return np.mean(obs_bp - resim_bp)
+    
 
-    Args:
-        patient_ids: List of patient IDs to load covariables for.
-        csv_path: Path to joachim.csv file.
-
-    Returns:
-        DataFrame with one row per patient containing covariable values.
-        Columns: patient_id, hr, pi, age, weight, height, sex, DFG, E0_indiv, HTA, IECARA, TABAC
-    """
-    df = pd.read_csv(csv_path)
-
-    # Filter to requested patients
-    df_filtered = df[df['id'].isin(patient_ids)]
-
-    # Covariables are constant per patient (except hr which is time-varying)
-    # We'll take the first value for each patient
-    covariable_cols = ['id', 'hr', 'pi', 'age', 'weight', 'height', 'sex',
-                      'DFG', 'E0_indiv', 'HTA', 'IECARA', 'TABAC']
-
-    # Group by patient and take first row to get per-patient covariables
-    covariables_df = df_filtered.groupby('id')[covariable_cols].first().reset_index(drop=True)
-    covariables_df.rename(columns={'id': 'patient_id'}, inplace=True)
-
-    return covariables_df
+def compute_patient_mean_sqr(patient_id: int, observations: Dict, resim_bp: np.ndarray
+) -> float:
+    bp_obs_data = observations[patient_id]["blood_pressure"]
+    obs_bp = np.array([v for _, v in bp_obs_data])
+    
+    return np.mean((obs_bp - resim_bp) ** 2)
 
 
-def load_resimulated_bp(patient_id: int,
-                        data_dir: str,
-                        output_dir: str,
-                        bp_type: str = 'windkessel') -> Tuple[np.ndarray, np.ndarray]:
-    """Load resimulated blood pressure trajectories from pkpd/opti/ directory.
-
-    Args:
-        patient_id: Patient ID.
-        data_dir: Base data directory (e.g., 'results').
-        output_dir: Output subdirectory (e.g., 'opti').
-        bp_type: Type of BP model ('emax' or 'windkessel').
-
-    Returns:
-        Tuple of (time array, BP array).
-
-    Raises:
-        FileNotFoundError: If trajectory files don't exist.
-    """
-    pkpd_path = f'{data_dir}/patient_{patient_id}/pkpd/{output_dir}'
-
-    time_file = f'{pkpd_path}/time.npy'
-    bp_file = f'{pkpd_path}/bp_{bp_type}.npy'
-
-    if not os.path.exists(time_file) or not os.path.exists(bp_file):
-        raise FileNotFoundError(
-            f"Missing resimulated trajectories for patient {patient_id} in {pkpd_path}"
-        )
-
-    time = np.load(time_file)
-    bp = np.load(bp_file)
-
-    return time, bp
-
-
-def compute_patient_mae(patient_id: int,
-                        observations: Dict,
-                        resim_time: np.ndarray,
-                        resim_bp: np.ndarray) -> float:
+def compute_patient_mae(
+    patient_id: int, observations: Dict, resim_bp: np.ndarray
+) -> float:
     """Compute Mean Absolute Error between observed and resimulated BP.
 
     Args:
@@ -96,194 +48,124 @@ def compute_patient_mae(patient_id: int,
         MAE value (mmHg).
     """
     # Extract observed BP data
-    bp_obs_data = observations[patient_id]['blood_pressure']
-    obs_times = np.array([t for t, _ in bp_obs_data])
+    bp_obs_data = observations[patient_id]["blood_pressure"]
     obs_bp = np.array([v for _, v in bp_obs_data])
 
-    # Check if resimulation time points match observation times exactly
-    if len(resim_time) == len(obs_times) and np.allclose(resim_time, obs_times, rtol=1e-9):
-        # Direct comparison without interpolation (more accurate)
-        resim_bp_at_obs = resim_bp
-    else:
-        # Fall back to interpolation (for backward compatibility with old results)
-        # This branch will be used for resimulations done before the update
-        resim_bp_at_obs = np.interp(obs_times, resim_time, resim_bp)
-
     # Compute MAE
-    mae = np.mean(np.abs(obs_bp - resim_bp_at_obs))
-
-    return mae
+    return np.mean(np.abs(obs_bp - resim_bp))
 
 
-def analyze_model_quality(patient_ids: List[int],
-                          data_dir: str = 'results',
-                          output_dir: str = 'opti',
-                          bp_type: str = 'windkessel',
-                          obs_csv_path: str = 'data/joachim.csv') -> pd.DataFrame:
-    """Analyze PKPD model quality across all patients.
-
-    For each patient:
-    1. Load observed BP from joachim.csv
-    2. Load resimulated BP from pkpd/opti/
-    3. Compute MAE between observed and resimulated BP
-    4. Load biological covariables
-    5. Combine into results DataFrame
-
-    Args:
-        patient_ids: List of patient IDs to analyze.
-        data_dir: Base data directory.
-        output_dir: Output subdirectory (e.g., 'opti' or 'opti-e0-constraint').
-        bp_type: BP model type ('emax' or 'windkessel').
-        obs_csv_path: Path to observations CSV.
-
-    Returns:
-        DataFrame with columns: patient_id, mae, hr, pi, age, weight, height,
-        sex, DFG, E0_indiv, HTA, IECARA, TABAC
-    """
-    print("\n" + "="*80)
-    print("PKPD MODEL QUALITY ANALYSIS")
-    print("="*80)
-    print(f"Data directory: {data_dir}")
-    print(f"Output subdirectory: {output_dir}")
-    print(f"BP type: {bp_type}")
-    print(f"Number of patients: {len(patient_ids)}")
-    print("="*80 + "\n")
-
-    # Load observations
-    print("Loading observations...")
-    observations = load_observations(patient_ids, obs_csv_path)
-    print(f"  ✓ Loaded observations for {len(observations)} patients")
-
-    # Load covariables
-    print("\nLoading patient covariables...")
-    covariables_df = load_patient_covariables(patient_ids, obs_csv_path)
-    print(f"  ✓ Loaded covariables for {len(covariables_df)} patients")
-
-    # Compute MAE for each patient
-    print("\nComputing MAE for each patient...")
-    mae_results = []
-    missing_patients = []
-
-    for patient_id in patient_ids:
-        try:
-            # Load resimulated BP
-            resim_time, resim_bp = load_resimulated_bp(
-                patient_id, data_dir, output_dir, bp_type
-            )
-
-            # Compute MAE
-            mae = compute_patient_mae(patient_id, observations, resim_time, resim_bp)
-
-            mae_results.append({
-                'patient_id': patient_id,
-                'mae': mae
-            })
-
-            print(f"  Patient {patient_id}: MAE = {mae:.4f} mmHg")
-
-        except FileNotFoundError as e:
-            print(f"  ⚠ Patient {patient_id}: {e}")
-            missing_patients.append(patient_id)
-
-    if missing_patients:
-        print(f"\n  ⚠ WARNING: Missing resimulated data for {len(missing_patients)} patient(s): {missing_patients}")
-
-    # Convert to DataFrame
-    mae_df = pd.DataFrame(mae_results)
-
-    # Merge with covariables
-    results_df = mae_df.merge(covariables_df, on='patient_id', how='left')
-
-    print(f"\n  ✓ Successfully computed MAE for {len(mae_df)} patients")
-
-    return results_df
-
-
-def save_quality_analysis(results_df: pd.DataFrame,
-                         data_dir: str) -> None:
+def save_quality_analysis(results_df: pd.DataFrame, res_dir: str, pkpd_dir:str, chosen_metric: str) -> None:
     """Save quality analysis results to CSV.
 
     Args:
         results_df: DataFrame with MAE and covariables.
-        data_dir: Base data directory.
+        res_dir: Base results directory.
     """
-    output_path = f'{data_dir}/stats/pkpd-quality'
+    output_path = f"{res_dir}/stats/pkpd-quality/{pkpd_dir}/"
     os.makedirs(output_path, exist_ok=True)
 
-    csv_path = f'{output_path}/quality_vs_covariables.csv'
+    csv_path = f"{output_path}/{chosen_metric}_vs_covariates.csv"
     results_df.to_csv(csv_path, index=False)
 
     print(f"\n  ✓ Quality analysis saved to {csv_path}")
 
 
-def print_quality_summary(results_df: pd.DataFrame) -> None:
+def print_quality_summary(results_df: pd.DataFrame, chosen_metric: str) -> None:
     """Print summary statistics of model quality.
 
     Args:
         results_df: DataFrame with MAE and covariables.
     """
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("MODEL QUALITY SUMMARY")
-    print("="*80)
+    print("=" * 80)
 
-    mae_values = results_df['mae'].values
-    print(f"\nMAE Statistics (n={len(mae_values)} patients):")
-    print(f"  Mean:   {np.mean(mae_values):.4f} mmHg")
-    print(f"  Median: {np.median(mae_values):.4f} mmHg")
-    print(f"  Std:    {np.std(mae_values):.4f} mmHg")
-    print(f"  Min:    {np.min(mae_values):.4f} mmHg")
-    print(f"  Max:    {np.max(mae_values):.4f} mmHg")
+    metric_values = results_df[chosen_metric].values
+    print(f"\n{chosen_metric.upper()} Statistics (n={len(metric_values)} patients):")
+    print(f"  Mean:   {np.mean(metric_values):.4f} mmHg")
+    print(f"  Median: {np.median(metric_values):.4f} mmHg")
+    print(f"  Std:    {np.std(metric_values):.4f} mmHg")
+    print(f"  Min:    {np.min(metric_values):.4f} mmHg")
+    print(f"  Max:    {np.max(metric_values):.4f} mmHg")
 
     # Identify best and worst performers
-    best_idx = np.argmin(mae_values)
-    worst_idx = np.argmax(mae_values)
+    best_idx = np.argmin(metric_values)
+    worst_idx = np.argmax(metric_values)
 
-    best_patient = results_df.iloc[best_idx]['patient_id']
-    worst_patient = results_df.iloc[worst_idx]['patient_id']
+    best_patient = results_df.iloc[best_idx]["patient_id"]
+    worst_patient = results_df.iloc[worst_idx]["patient_id"]
 
-    print(f"\n  Best fit:  Patient {best_patient} (MAE = {mae_values[best_idx]:.4f} mmHg)")
-    print(f"  Worst fit: Patient {worst_patient} (MAE = {mae_values[worst_idx]:.4f} mmHg)")
+    print(
+        f"\n  Best fit:  Patient {best_patient} ({chosen_metric.upper()} = {metric_values[best_idx]:.4f} mmHg)"
+    )
+    print(
+        f"  Worst fit: Patient {worst_patient} ({chosen_metric.upper()} = {metric_values[worst_idx]:.4f} mmHg)"
+    )
 
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
 
 
 def main():
     """Main function to run PKPD quality analysis."""
     # Configuration
-    data_dir = 'results'
-    use_e0_constraint = False  # Toggle E_0 constraint mode
-    bp_type = 'emax'  # or 'windkessel'
+    results_dir = "results"
+    bp_type = "emax"  # or 'windkessel'
+    obs_dir = "data/joachim.csv"
+    
+    is_constrained = True
+    
+    pkpd_dir = "opti-constrained" if is_constrained else "opti"
 
-    output_dir = 'opti-e0-constraint' if use_e0_constraint else 'opti'
-
+    chosen_metric = 'mae'  #  'mae' 'mean-error' 'mean-squares'
+    
     # Get list of all patient directories
     print("Scanning for patient directories...")
-    patient_dirs = [d for d in os.listdir(data_dir)
-                   if d.startswith('patient_') and os.path.isdir(os.path.join(data_dir, d))]
-    patient_ids = sorted([int(d.split('_')[1]) for d in patient_dirs])
-    print(f"Found {len(patient_ids)} patient directories: {patient_ids}\n")
+    patient_dirs = [
+        d
+        for d in os.listdir(results_dir)
+        if d.startswith("patient_") and os.path.isdir(os.path.join(results_dir, d))
+    ]
+    patient_ids = sorted([int(d.split("_")[1]) for d in patient_dirs])
+    # print(f"Found {len(patient_ids)} patient directories: {patient_ids}\n")
 
     if not patient_ids:
         print("ERROR: No patient directories found!")
         return
+    
+    observations = load_observations(patient_ids, obs_dir)
+    covariates = load_patient_covariates(patient_ids, obs_dir)
+    
+    metrics = []
+    
+    for id in patient_ids:        
+        t, Ad, Ac, Ap, E_max, E_windkessel = load_resimulated_trajectories(id, results_dir, pkpd_dir)
+        
+        modeled_bp = E_max if bp_type == "emax" else E_windkessel
 
-    # Run quality analysis
-    results_df = analyze_model_quality(
-        patient_ids,
-        data_dir=data_dir,
-        output_dir=output_dir,
-        bp_type=bp_type
-    )
+        if chosen_metric == 'mae':
+            metrics.append(compute_patient_mae(id, observations, modeled_bp))
+        elif chosen_metric == 'mean-squares':
+            metrics.append(compute_patient_mean_sqr(id, observations, modeled_bp))
+        elif chosen_metric == 'mean-error':
+            metrics.append(compute_patient_mean_err(id, observations, modeled_bp))
+        else:
+            pass
+        
+    # Create final DF
+    metrics_df = pd.DataFrame({"patient_id": patient_ids, chosen_metric: metrics}, columns=["patient_id", chosen_metric])
+    
+    results_df = metrics_df.merge(covariates, on="patient_id", how="left")
 
     # Print summary
-    print_quality_summary(results_df)
+    print_quality_summary(results_df, chosen_metric)
 
     # Save results
-    save_quality_analysis(results_df, data_dir)
+    save_quality_analysis(results_df, results_dir, pkpd_dir, chosen_metric)
 
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("ANALYSIS COMPLETE")
-    print("="*80 + "\n")
+    print("=" * 80 + "\n")
 
 
 if __name__ == "__main__":

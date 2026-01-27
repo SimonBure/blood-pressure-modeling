@@ -21,13 +21,13 @@ from opti.postprocessing import (
     resimulate_with_optimized_params,
     save_resimulated_trajectories,
     load_optimized_parameters,
-    load_resimulated_trajectories,
     run_resimulation
 )
 from utils.datatools import (
     load_observations,
     load_injections,
     load_patient_e0_indiv,
+    load_resimulated_trajectories,
     save_optimal_parameters,
     print_optimization_results
 )
@@ -72,6 +72,7 @@ def run_pipeline(config: OptimizationConfig, mode: str = 'full') -> None:
         print(f"  - Max data points: {config.max_data_points} (subsample if exceeded)")
         print(f"  - Cost function mode: {config.cost_function_mode}")
         print(f"  - E_0 mode: {'Hard constraint to E0_indiv' if config.use_e0_constraint else 'Initial guess from E0_indiv'}")
+        print(f"  - Parameter bounds: {'Paper-based (mu +/- 3*sigma)' if config.use_paper_bounds else 'Default (non-negativity only)'}")
     print(f"  - Output directory: {config.output_dir}/")
     print("="*70 + "\n")
 
@@ -443,17 +444,16 @@ if __name__ == "__main__":
     """
     Example usage - run pipeline with different modes.
     """
-    # Configuration
+    # Configuration flags
     use_e0_constraint = False  # Toggle E_0 constraint mode
-    output_subdir = 'opti-e0-constraint' if use_e0_constraint else 'opti'
+    use_paper_bounds = True    # Toggle biologically realistic bounds from paper (mu +/- 3*sigma)
 
     config = OptimizationConfig(
-        patient_ids=[1, 2, 3, 4],  # None = all patients, or specify list like [23]
+        patient_ids=None,  # None = all patients, or specify list like [30, 31]
         max_data_points=5000,
         cost_function_mode='emax',
         use_e0_constraint=use_e0_constraint,
-        data_dir='results',
-        output_dir=output_subdir,
+        use_paper_bounds=use_paper_bounds,  # Biologically realistic bounds
         ipopt_max_iter=5000,
         ipopt_tol=1e-6,
         ipopt_print_level=0  # 0=silent, 3=minimal, 5=verbose

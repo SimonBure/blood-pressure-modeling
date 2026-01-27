@@ -120,6 +120,93 @@ def load_patient_e0_indiv(patient_ids: Optional[List[int]] = None,
     return e0_dict
 
 
+def load_resimulated_trajectories(patient_id: int,
+                                  res_dir: str,
+                                  pkpd_dir: str) -> Tuple:
+    """Load resimulated trajectories from disk.
+
+    Args:
+        patient_id: Patient ID.
+        res_dir: Base results directory (e.g., 'results').
+        pkpd_dir: PKPD output subdirectory (e.g., 'opti').
+
+    Returns:
+        Tuple of (t, Ad, Ac, Ap, E_emax, E_windkessel) arrays.
+
+    Raises:
+        FileNotFoundError: If trajectory files don't exist.
+    """
+    traj_path = f'{res_dir}/patient_{patient_id}/pkpd/{pkpd_dir}'
+    time_file = f'{traj_path}/time.npy'
+
+    if not os.path.exists(time_file):
+        raise FileNotFoundError(
+            f"\nERROR: Cannot run plot-only mode for patient {patient_id}\n"
+            f"  Missing: {traj_path}/*.npy\n"
+            f"  → Run resimulation first with mode='resim_and_plot' or mode='full'"
+        )
+
+    try:
+        t = np.load(f'{traj_path}/time.npy')
+        Ad = np.load(f'{traj_path}/Ad.npy')
+        Ac = np.load(f'{traj_path}/Ac.npy')
+        Ap = np.load(f'{traj_path}/Ap.npy')
+        E_emax = np.load(f'{traj_path}/bp_emax.npy')
+        E_windkessel = np.load(f'{traj_path}/bp_windkessel.npy')
+    except FileNotFoundError as e:
+        raise FileNotFoundError(
+            f"\nERROR: Incomplete trajectory files for patient {patient_id}\n"
+            f"  Missing: {traj_path}/*.npy\n"
+            f"  → Run resimulation with mode='resim_and_plot' or mode='full'"
+        ) from e
+
+    return t, Ad, Ac, Ap, E_emax, E_windkessel
+
+
+def load_patient_covariates(
+    patient_ids: List[int], csv_path: str = "data/joachim.csv"
+) -> pd.DataFrame:
+    """Load biological covariables for each patient from joachim.csv.
+
+    Args:
+        patient_ids: List of patient IDs to load covariables for.
+        csv_path: Path to joachim.csv file.
+
+    Returns:
+        DataFrame with one row per patient containing covariable values.
+        Columns: patient_id, hr, pi, age, weight, height, sex, DFG, E0_indiv, HTA, IECARA, TABAC
+    """
+    df = pd.read_csv(csv_path)
+
+    # Filter to requested patients
+    df_filtered = df[df["id"].isin(patient_ids)]
+
+    # Covariables are constant per patient (except hr which is time-varying)
+    # We'll take the first value for each patient
+    covariable_cols = [
+        "id",
+        "hr",
+        "pi",
+        "age",
+        "weight",
+        "height",
+        "sex",
+        "DFG",
+        "E0_indiv",
+        "HTA",
+        "IECARA",
+        "TABAC",
+    ]
+
+    # Group by patient and take first row to get per-patient covariables
+    covariables_df = (
+        df_filtered.groupby("id")[covariable_cols].first().reset_index(drop=True)
+    )
+    covariables_df.rename(columns={"id": "patient_id"}, inplace=True)
+
+    return covariables_df
+
+
 # ==============================================================================
 # DATA SAVING
 # ==============================================================================
