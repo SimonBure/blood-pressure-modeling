@@ -1,5 +1,6 @@
 """Configuration management for PKPD parameter optimization."""
 
+import math
 from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Optional
 
@@ -32,6 +33,21 @@ class PhysiologicalConstants:
     ZETA_DEFAULT = 19.44  # dimensionless
     NU_DEFAULT = 2.12  # mmHg/(nmol/L)
 
+    # Standard deviations from paper Table 2 (log-space, for log-normal distribution)
+    # These are the ω (omega) parameters of the inter-individual variability
+    SIGMA_C_ENDO = 0.51
+    SIGMA_K_A = 0.65
+    SIGMA_V_C = 0.36
+    SIGMA_K_12 = 0.28
+    SIGMA_K_21 = 0.58
+    SIGMA_K_EL = 0.31
+    SIGMA_E_0 = 0.22
+    SIGMA_E_MAX = 0.51
+    SIGMA_EC_50 = 0.59
+    SIGMA_OMEGA = 0.2
+    SIGMA_ZETA = 0.66
+    SIGMA_NU = 0.4
+
     # Simulation defaults
     T_END_DEFAULT = 2200  # seconds
     DT_DEFAULT = 0.5  # seconds
@@ -42,25 +58,62 @@ class PhysiologicalConstants:
     FIGSIZE_COMPARISON = (16, 10)
     DPI = 150
 
-    # Paper-based parameter bounds (Table 2, log-normal mu +/- 3*sigma)
-    # Bounds calculated as: lower = mu * exp(-3*sigma), upper = mu * exp(+3*sigma)
-    PAPER_PARAM_BOUNDS = {
-        # PK parameters
-        'C_endo': (0.175, 3.743),    # nmol/L, mu=0.81, sigma=0.51
-        'k_a': (0.00285, 0.1404),    # 1/s, mu=0.02, sigma=0.65
-        'V_c': (0.166, 1.444),       # L, mu=0.49, sigma=0.36
-        'k_12': (0.0259, 0.139),     # 1/s, mu=0.06, sigma=0.28
-        'k_21': (0.007, 0.228),      # 1/s, mu=0.04, sigma=0.58
-        'k_el': (0.0197, 0.127),     # 1/s, mu=0.05, sigma=0.31
-        # PD Emax parameters
-        'E_0': (29.53, 110.4),       # mmHg, mu=57.09, sigma=0.22
-        'E_max': (24.54, 524.7),     # mmHg, mu=113.52, sigma=0.51
-        'EC_50': (2.67, 92.3),       # nmol/L, mu=15.7, sigma=0.59
-        # PD Windkessel parameters
-        'omega': (0.554, 1.841),     # rad/s, mu=1.01, sigma=0.2
-        'zeta': (2.68, 140.9),       # dimensionless, mu=19.44, sigma=0.66
-        'nu': (0.639, 7.04),         # mmHg/(nmol/L), mu=2.12, sigma=0.4
-    }
+    # Paper-based parameter bounds (computed from Table 2 values)
+    # Will be populated by get_paper_param_bounds() after class definition
+    PAPER_PARAM_BOUNDS: Dict[str, Tuple[Optional[float], Optional[float]]] = {}
+
+    @staticmethod
+    def compute_lognormal_bounds(theta_pop: float, omega: float, n_sigma: float = 3.0) -> Tuple[Optional[float], Optional[float]]:
+        """
+        Compute bounds for a log-normal distributed parameter.
+
+        For a log-normal distribution, individual parameters are modeled as:
+            θ_i = θ_pop × exp(η_i)  where η_i ~ N(0, ω²)
+
+        The bounds at ±n_sigma standard deviations in log-space are:
+            θ_lower = θ_pop × exp(-n_sigma × ω)
+            θ_upper = θ_pop × exp(+n_sigma × ω)
+
+        Args:
+            theta_pop: Population parameter value (Value column from paper Table 2)
+            omega: Inter-individual variability in log-space (Standard deviation from Table 2)
+            n_sigma: Number of standard deviations for bounds (default: 3)
+
+        Returns:
+            Tuple of (lower_bound, upper_bound)
+        """
+        lower = theta_pop * math.exp(-n_sigma * omega)
+        upper = theta_pop * math.exp(+n_sigma * omega)
+
+        return (lower, upper)
+
+    @classmethod
+    def get_paper_param_bounds(cls) -> Dict[str, Tuple[Optional[float], Optional[float]]]:
+        """
+        Compute biologically realistic parameter bounds from paper values.
+
+        Uses the log-normal formula: θ_lower = θ_pop × exp(-3ω), θ_upper = θ_pop × exp(+3ω)
+
+        Returns:
+            Dictionary mapping parameter names to (lower, upper) bound tuples
+        """
+        return {
+            # PK parameters
+            'C_endo': cls.compute_lognormal_bounds(cls.C_ENDO_DEFAULT, cls.SIGMA_C_ENDO),
+            'k_a': cls.compute_lognormal_bounds(cls.K_A_DEFAULT, cls.SIGMA_K_A),
+            'V_c': cls.compute_lognormal_bounds(cls.V_C_DEFAULT, cls.SIGMA_V_C),
+            'k_12': cls.compute_lognormal_bounds(cls.K_12_DEFAULT, cls.SIGMA_K_12),
+            'k_21': cls.compute_lognormal_bounds(cls.K_21_DEFAULT, cls.SIGMA_K_21),
+            'k_el': cls.compute_lognormal_bounds(cls.K_EL_DEFAULT, cls.SIGMA_K_EL),
+            # PD Emax parameters
+            'E_0': cls.compute_lognormal_bounds(cls.E_0_DEFAULT, cls.SIGMA_E_0),
+            'E_max': cls.compute_lognormal_bounds(cls.E_MAX_DEFAULT, cls.SIGMA_E_MAX),
+            'EC_50': cls.compute_lognormal_bounds(cls.EC_50_DEFAULT, cls.SIGMA_EC_50),
+            # PD Windkessel parameters
+            'omega': cls.compute_lognormal_bounds(cls.OMEGA_DEFAULT, cls.SIGMA_OMEGA),
+            'zeta': cls.compute_lognormal_bounds(cls.ZETA_DEFAULT, cls.SIGMA_ZETA),
+            'nu': cls.compute_lognormal_bounds(cls.NU_DEFAULT, cls.SIGMA_NU),
+        }
 
     # Convenience properties for cleaner access
     @property
@@ -130,6 +183,10 @@ class PhysiologicalConstants:
     @property
     def nu(self) -> float:
         return self.NU_DEFAULT
+
+
+# Pre-compute paper bounds at class definition time
+PhysiologicalConstants.PAPER_PARAM_BOUNDS = PhysiologicalConstants.get_paper_param_bounds()
 
 
 @dataclass

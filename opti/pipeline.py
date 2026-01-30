@@ -75,6 +75,10 @@ def run_pipeline(config: OptimizationConfig, mode: str = 'full') -> None:
         print(f"  - Parameter bounds: {'Paper-based (mu +/- 3*sigma)' if config.use_paper_bounds else 'Default (non-negativity only)'}")
     print(f"  - Output directory: {config.output_dir}/")
     print("="*70 + "\n")
+    
+    if config.use_paper_bounds:
+        print("Parameter bounds:")
+        print(config.param_bounds)
 
     # Load CSV data (needed for all modes)
     print("Loading CSV data...")
@@ -449,7 +453,7 @@ if __name__ == "__main__":
     use_paper_bounds = True    # Toggle biologically realistic bounds from paper (mu +/- 3*sigma)
 
     config = OptimizationConfig(
-        patient_ids=None,  # None = all patients, or specify list like [30, 31]
+        patient_ids=[1],  # None = all patients, or specify list like [30, 31]
         max_data_points=5000,
         cost_function_mode='emax',
         use_e0_constraint=use_e0_constraint,
