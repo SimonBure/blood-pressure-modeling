@@ -17,25 +17,17 @@ from typing import Dict, List, Tuple
 from utils.datatools import load_observations, load_patient_covariates, load_resimulated_trajectories
 
 
-def compute_patient_mean_err(patient_id: int, observations: Dict, resim_bp: np.ndarray
-) -> float:
-    bp_obs_data = observations[patient_id]["blood_pressure"]
-    obs_bp = np.array([v for _, v in bp_obs_data])
-        
-    return np.mean(obs_bp - resim_bp)
+def compute_mean_err(observations: np.ndarray, resim_bp: np.ndarray
+) -> float:        
+    return np.mean(observations - resim_bp)
     
 
-def compute_patient_mean_sqr(patient_id: int, observations: Dict, resim_bp: np.ndarray
+def compute_mean_sqr_err(observations: np.ndarray, resim_bp: np.ndarray
 ) -> float:
-    bp_obs_data = observations[patient_id]["blood_pressure"]
-    obs_bp = np.array([v for _, v in bp_obs_data])
-    
-    return np.mean((obs_bp - resim_bp) ** 2)
+    return np.mean((observations - resim_bp) ** 2)
 
 
-def compute_patient_mae(
-    patient_id: int, observations: Dict, resim_bp: np.ndarray
-) -> float:
+def compute_mae(observations: np.ndarray, ref_curve: np.ndarray) -> float:
     """Compute Mean Absolute Error between observed and resimulated BP.
 
     Args:
@@ -47,12 +39,8 @@ def compute_patient_mae(
     Returns:
         MAE value (mmHg).
     """
-    # Extract observed BP data
-    bp_obs_data = observations[patient_id]["blood_pressure"]
-    obs_bp = np.array([v for _, v in bp_obs_data])
-
     # Compute MAE
-    return np.mean(np.abs(obs_bp - resim_bp))
+    return np.mean(np.abs(observations - ref_curve))
 
 
 def save_quality_analysis(results_df: pd.DataFrame, res_dir: str, pkpd_dir:str, chosen_metric: str) -> None:
@@ -65,13 +53,13 @@ def save_quality_analysis(results_df: pd.DataFrame, res_dir: str, pkpd_dir:str, 
     output_path = f"{res_dir}/stats/pkpd-quality/{pkpd_dir}/"
     os.makedirs(output_path, exist_ok=True)
 
-    csv_path = f"{output_path}/{chosen_metric}_vs_covariates.csv"
+    csv_path = f"{output_path}/{chosen_metric}.csv"
     results_df.to_csv(csv_path, index=False)
 
     print(f"\n  ✓ Quality analysis saved to {csv_path}")
 
 
-def print_quality_summary(results_df: pd.DataFrame, chosen_metric: str) -> None:
+def print_quality_summary(metrics_df: pd.DataFrame, chosen_metric: str) -> None:
     """Print summary statistics of model quality.
 
     Args:
@@ -81,27 +69,17 @@ def print_quality_summary(results_df: pd.DataFrame, chosen_metric: str) -> None:
     print("MODEL QUALITY SUMMARY")
     print("=" * 80)
 
-    metric_values = results_df[chosen_metric].values
-    print(f"\n{chosen_metric.upper()} Statistics (n={len(metric_values)} patients):")
-    print(f"  Mean:   {np.mean(metric_values):.4f} mmHg")
-    print(f"  Median: {np.median(metric_values):.4f} mmHg")
-    print(f"  Std:    {np.std(metric_values):.4f} mmHg")
-    print(f"  Min:    {np.min(metric_values):.4f} mmHg")
-    print(f"  Max:    {np.max(metric_values):.4f} mmHg")
+    cols = metrics_df.columns[1:]
+    
+    print(f"Statistics (n={len(metrics_df[cols[0]])} patients):")
 
-    # Identify best and worst performers
-    best_idx = np.argmin(metric_values)
-    worst_idx = np.argmax(metric_values)
-
-    best_patient = results_df.iloc[best_idx]["patient_id"]
-    worst_patient = results_df.iloc[worst_idx]["patient_id"]
-
-    print(
-        f"\n  Best fit:  Patient {best_patient} ({chosen_metric.upper()} = {metric_values[best_idx]:.4f} mmHg)"
-    )
-    print(
-        f"  Worst fit: Patient {worst_patient} ({chosen_metric.upper()} = {metric_values[worst_idx]:.4f} mmHg)"
-    )
+    for c_name in cols:
+        print(f"\n{c_name.upper()} ")
+        print(f"  Mean:   {np.mean(metrics_df[c_name]):.4f} mmHg")
+        print(f"  Median: {np.median(metrics_df[c_name]):.4f} mmHg")
+        print(f"  Std:    {np.std(metrics_df[c_name]):.4f} mmHg")
+        print(f"  Min:    {np.min(metrics_df[c_name]):.4f} mmHg")
+        print(f"  Max:    {np.max(metrics_df[c_name]):.4f} mmHg")
 
     print("\n" + "=" * 80)
 
@@ -113,7 +91,7 @@ def main():
     bp_type = "emax"  # or 'windkessel'
     obs_dir = "data/joachim.csv"
     
-    is_constrained = True
+    is_constrained = False
     
     pkpd_dir = "opti-constrained" if is_constrained else "opti"
 
@@ -136,32 +114,45 @@ def main():
     observations = load_observations(patient_ids, obs_dir)
     covariates = load_patient_covariates(patient_ids, obs_dir)
     
-    metrics = []
+    bp_errors = np.zeros(len(patient_ids))
+    ac_errors = np.zeros(len(patient_ids))
     
-    for id in patient_ids:        
-        t, Ad, Ac, Ap, E_max, E_windkessel = load_resimulated_trajectories(id, results_dir, pkpd_dir)
+    for i, id in enumerate(patient_ids):
+        patient_obs = observations[id]
+        ac_obs = np.array([ac for _, ac in patient_obs["concentration"]])
+        t_ac_obs = np.array([t for t, _ in patient_obs["concentration"]])
+        bp_obs = np.array([bp for _, bp in patient_obs["blood_pressure"]])
+        
+        t, _, Ac, __, E_max, E_windkessel = load_resimulated_trajectories(id, results_dir, pkpd_dir)
+        
+        Ac = np.interp(t_ac_obs, t, Ac)  # Ac reference points at time compatible with ac_obs
         
         modeled_bp = E_max if bp_type == "emax" else E_windkessel
-
+        
         if chosen_metric == 'mae':
-            metrics.append(compute_patient_mae(id, observations, modeled_bp))
+            bp_err = compute_mae(bp_obs, modeled_bp)
+            ac_err = compute_mae(ac_obs, Ac)
         elif chosen_metric == 'mean-squares':
-            metrics.append(compute_patient_mean_sqr(id, observations, modeled_bp))
+            bp_err = compute_mean_sqr_err(bp_obs, modeled_bp)
+            ac_err = compute_mean_sqr_err(ac_obs, Ac)
         elif chosen_metric == 'mean-error':
-            metrics.append(compute_patient_mean_err(id, observations, modeled_bp))
+            bp_err = compute_mean_err(bp_obs, modeled_bp)
+            ac_err = compute_mean_err(ac_obs, Ac)
         else:
-            pass
+            raise ValueError("Wrong metric choice.")
+            
+        bp_errors[i] = bp_err
+        ac_errors[i] = ac_err
         
     # Create final DF
-    metrics_df = pd.DataFrame({"patient_id": patient_ids, chosen_metric: metrics}, columns=["patient_id", chosen_metric])
+    bp_err_colname = f"{chosen_metric}-BP"
+    ac_err_colname = f"{chosen_metric}-Ac"
+    metrics_df = pd.DataFrame({"patient_id": patient_ids, bp_err_colname: bp_errors, ac_err_colname: ac_errors}, columns=["patient_id", bp_err_colname, ac_err_colname])
+    print(metrics_df.head())
+
+    print_quality_summary(metrics_df, chosen_metric)
     
-    results_df = metrics_df.merge(covariates, on="patient_id", how="left")
-
-    # Print summary
-    print_quality_summary(results_df, chosen_metric)
-
-    # Save results
-    save_quality_analysis(results_df, results_dir, pkpd_dir, chosen_metric)
+    save_quality_analysis(metrics_df, results_dir, pkpd_dir, chosen_metric)
 
     print("\n" + "=" * 80)
     print("ANALYSIS COMPLETE")
