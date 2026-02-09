@@ -16,9 +16,9 @@ from stats.pkpd_parameters import (
 
 from stats.pkpd_quality import (
     load_patient_covariates,
-    compute_patient_mae,
-    compute_patient_mean_err,
-    compute_patient_mean_sqr,
+    compute_mae,
+    compute_mean_err,
+    compute_mean_sqr_err,
     save_quality_analysis,
     print_quality_summary,
 )
@@ -35,7 +35,7 @@ __all__ = [
     # pkpd_quality
     "load_patient_covariates",
     "load_resimulated_bp",
-    "compute_patient_mae",
+    "compute_mae",
     "analyze_model_quality",
     "save_quality_analysis",
     "print_quality_summary",

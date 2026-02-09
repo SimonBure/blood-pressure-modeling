@@ -82,6 +82,12 @@ class NorepinephrinePKPD:
             return y_pd_np1 - y_pd_n - dt * self.pd_windkessel_rhs(t_np1, y_pd_np1, Cc_np1)
         y_pd_np1 = fsolve(residual, y_pd_n)
         return y_pd_np1
+    
+    def bp_obs_to_x_variables(self, blood_pressure_obs):
+        return (self.E_0 - self.E_max) * self.V_c * self.EC_50 / (blood_pressure_obs - self.E_max)
+    
+    def x4(self):
+        return self.V_c * (self.EC_50 + self.C_endo)
 
     def simulate(self, patient_id, t_end=2200, dt=0.5, t_eval=None):
         """Simulate PKPD model using Euler implicit method.

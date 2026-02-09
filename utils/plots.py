@@ -290,3 +290,113 @@ def plot_injection_verification(patient_id: int,
     plt.close()
 
     print(f"  ✓ Injection verification plot saved to {output_path}/")
+
+
+# =============================================================================
+# OBSERVER PLOTTING FUNCTIONS
+# =============================================================================
+
+def plot_observer_individual_states(t: np.ndarray, x_true: np.ndarray, x_hat: np.ndarray,
+                                    state_names: list, units: list,
+                                    patient_id: int, output_dir: str) -> None:
+    """Generate individual plots comparing true vs estimated states for observer.
+
+    Args:
+        t: Time array
+        x_true: True states (4 x n)
+        x_hat: Estimated states (4 x n)
+        state_names: ['Ad', 'Ac', 'Ap', 'x4']
+        units: Units for each state
+        patient_id: Patient ID
+        output_dir: Output directory path
+    """
+    colors_true = ['#1f77b4', '#2ca02c', '#9467bd', '#17becf']  # Blues/greens
+    colors_est = ['#ff7f0e', '#d62728', '#e377c2', '#bcbd22']   # Oranges/reds
+
+    for i, (name, unit) in enumerate(zip(state_names, units)):
+        fig, ax = plt.subplots(figsize=(10, 5))
+
+        ax.plot(t, x_true[i, :], color=colors_true[i], linewidth=2,
+                label=f'True {name}', alpha=0.8)
+        ax.plot(t, x_hat[i, :], color=colors_est[i], linewidth=2,
+                linestyle='--', label=f'Estimated {name}', alpha=0.8)
+
+        ax.set_xlabel('Time (s)', fontsize=12)
+        ax.set_ylabel(f'{name} ({unit})', fontsize=12)
+        ax.set_title(f'Patient {patient_id} - {name}: True vs Estimated',
+                     fontsize=14, fontweight='bold')
+        ax.legend(fontsize=11)
+        ax.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+        plt.savefig(f'{output_dir}/{name.lower()}.png', dpi=150)
+        plt.close()
+
+
+def plot_observer_summary(t: np.ndarray, x_true: np.ndarray, x_hat: np.ndarray,
+                          state_names: list, patient_id: int, output_dir: str) -> None:
+    """Generate summary plot with all 4 observer states.
+
+    Args:
+        t: Time array
+        x_true: True states (4 x n)
+        x_hat: Estimated states (4 x n)
+        state_names: State names
+        patient_id: Patient ID
+        output_dir: Output directory
+    """
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    fig.suptitle(f'Patient {patient_id} - Observer State Estimation',
+                 fontsize=16, fontweight='bold')
+
+    colors_true = ['#1f77b4', '#2ca02c', '#9467bd', '#17becf']
+    colors_est = ['#ff7f0e', '#d62728', '#e377c2', '#bcbd22']
+    units = ['nmol', 'nmol', 'nmol', 'nmol/L']
+
+    for i, (ax, name, unit) in enumerate(zip(axes.flat, state_names, units)):
+        ax.plot(t, x_true[i, :], color=colors_true[i], linewidth=2,
+                label=f'True', alpha=0.8)
+        ax.plot(t, x_hat[i, :], color=colors_est[i], linewidth=2,
+                linestyle='--', label=f'Estimated', alpha=0.8)
+
+        ax.set_xlabel('Time (s)', fontsize=11)
+        ax.set_ylabel(f'{name} ({unit})', fontsize=11)
+        ax.set_title(f'{name}', fontsize=12, fontweight='bold')
+        ax.legend(fontsize=10)
+        ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(f'{output_dir}/observer_summary.png', dpi=150)
+    plt.close()
+
+
+def plot_observer_estimation_error(t: np.ndarray, x_true: np.ndarray, x_hat: np.ndarray,
+                                   state_names: list, patient_id: int,
+                                   output_dir: str) -> None:
+    """Plot observer estimation error over time for each state.
+
+    Args:
+        t: Time array
+        x_true: True states (4 x n)
+        x_hat: Estimated states (4 x n)
+        state_names: State names
+        patient_id: Patient ID
+        output_dir: Output directory
+    """
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    fig.suptitle(f'Patient {patient_id} - Estimation Error Over Time',
+                 fontsize=16, fontweight='bold')
+
+    for i, (ax, name) in enumerate(zip(axes.flat, state_names)):
+        error = x_hat[i, :] - x_true[i, :]
+        ax.plot(t, error, linewidth=1.5, alpha=0.8)
+        ax.axhline(y=0, color='k', linestyle='--', alpha=0.3)
+
+        ax.set_xlabel('Time (s)', fontsize=11)
+        ax.set_ylabel(f'Error', fontsize=11)
+        ax.set_title(f'{name} Error', fontsize=12, fontweight='bold')
+        ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(f'{output_dir}/estimation_error.png', dpi=150)
+    plt.close()
