@@ -11,6 +11,7 @@ Covariables analyzed:
 """
 
 import os
+import json
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Tuple
@@ -53,13 +54,38 @@ def save_quality_analysis(results_df: pd.DataFrame, res_dir: str, pkpd_dir:str, 
     output_path = f"{res_dir}/stats/pkpd-quality/{pkpd_dir}/"
     os.makedirs(output_path, exist_ok=True)
 
-    csv_path = f"{output_path}/{chosen_metric}.csv"
+    csv_path = os.path.join(output_path, f"{chosen_metric}.csv")
+    json_path = os.path.join(output_path, f"{chosen_metric}_summary.json")
     results_df.to_csv(csv_path, index=False)
+    
+    bp_col = f"{chosen_metric}-BP"
+    ac_col = f"{chosen_metric}-Ac"
+    
+    summary_stats = {
+        'BP': {
+            'mean': np.mean(results_df[bp_col]),
+            'std': np.std(results_df[bp_col]),
+            'median': np.median(results_df[bp_col]),
+            'min': np.min(results_df[bp_col]),
+            'max': np.max(results_df[bp_col])
+        },
+        'Ac': {
+            'mean': np.mean(results_df[ac_col]),
+            'std': np.std(results_df[ac_col]),
+            'median': np.median(results_df[ac_col]),
+            'min': np.min(results_df[ac_col]),
+            'max': np.max(results_df[ac_col])
+        }
+    }
+    
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(summary_stats, f, indent=4, separators=(',', ': '))
+        
 
     print(f"\n  ✓ Quality analysis saved to {csv_path}")
 
 
-def print_quality_summary(metrics_df: pd.DataFrame, chosen_metric: str) -> None:
+def print_quality_summary(metrics_df: pd.DataFrame) -> None:
     """Print summary statistics of model quality.
 
     Args:
@@ -112,7 +138,6 @@ def main():
         return
     
     observations = load_observations(patient_ids, obs_dir)
-    covariates = load_patient_covariates(patient_ids, obs_dir)
     
     bp_errors = np.zeros(len(patient_ids))
     ac_errors = np.zeros(len(patient_ids))
@@ -150,7 +175,7 @@ def main():
     metrics_df = pd.DataFrame({"patient_id": patient_ids, bp_err_colname: bp_errors, ac_err_colname: ac_errors}, columns=["patient_id", bp_err_colname, ac_err_colname])
     print(metrics_df.head())
 
-    print_quality_summary(metrics_df, chosen_metric)
+    print_quality_summary(metrics_df)
     
     save_quality_analysis(metrics_df, results_dir, pkpd_dir, chosen_metric)
 
