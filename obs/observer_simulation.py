@@ -214,14 +214,14 @@ def main():
     # =========================================================================
     # CONFIGURATION
     # =========================================================================
-    PATIENT_ID = 1
+    PATIENT_ID = 6
     TARGET_DIR = 'opti'  # 'opti', 'opti-constrained', or 'standalone'
     RES_DIR = 'results'
 
     # Kalman filter parameters
     # Process noise covariance Q diagonal (4x4)
     # Higher values = less trust in model for that state
-    Q_DIAG = [0, 0, 0, 0.1]
+    Q_DIAG = [0, 0, 0, 1]
 
     # Measurement noise covariance R (scalar)
     # Higher value = less trust in measurements
@@ -239,43 +239,22 @@ def main():
     print(f"\nPatient ID: {PATIENT_ID}")
     print(f"Target directory: {TARGET_DIR}")
 
+    # Load input function
+    injections_dict = load_injections([PATIENT_ID])
+    pkpd_model = NorepinephrinePKPD(injections_dict)
+
     # Load parameters
     if TARGET_DIR == 'standalone':
         print("\nUsing default PKPD parameters (standalone mode)")
-        pkpd_model = NorepinephrinePKPD()
-        params = {
-            'k_a': pkpd_model.k_a,
-            'k_12': pkpd_model.k_12,
-            'k_21': pkpd_model.k_21,
-            'k_el': pkpd_model.k_el,
-            'V_c': pkpd_model.V_c,
-            'C_endo': pkpd_model.C_endo,
-            'EC_50': pkpd_model.EC_50,
-            'E_0': pkpd_model.E_0,
-            'E_max': pkpd_model.E_max
-        }
+        params = pkpd_model.get_parameters()
     else:
         print(f"\nLoading optimized parameters from {TARGET_DIR}...")
         params = load_optimized_parameters(PATIENT_ID, RES_DIR, TARGET_DIR)
+        pkpd_model.set_parameters(params)
 
     print("\nLoaded parameters:")
     for key in ['k_a', 'k_12', 'k_21', 'k_el', 'V_c', 'C_endo', 'EC_50', 'E_0', 'E_max']:
         print(f"  {key}: {params[key]:.6f}")
-
-    # Create PKPD model with parameters
-    injections_dict = load_injections([PATIENT_ID])
-    pkpd_model = NorepinephrinePKPD(injections_dict)
-
-    # Update model parameters
-    pkpd_model.k_a = params['k_a']
-    pkpd_model.k_12 = params['k_12']
-    pkpd_model.k_21 = params['k_21']
-    pkpd_model.k_el = params['k_el']
-    pkpd_model.V_c = params['V_c']
-    pkpd_model.C_endo = params['C_endo']
-    pkpd_model.EC_50 = params['EC_50']
-    pkpd_model.E_0 = params['E_0']
-    pkpd_model.E_max = params['E_max']
 
     # Load true trajectories
     print("\nLoading true trajectories...")

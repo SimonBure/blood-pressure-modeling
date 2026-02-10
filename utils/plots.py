@@ -1,10 +1,9 @@
 """Plotting functions for PKPD optimization visualization."""
 
-import numpy as np
-import matplotlib.pyplot as plt
 import os
 from typing import Dict, Tuple
-from pkpd import NorepinephrinePKPD
+import numpy as np
+import matplotlib.pyplot as plt
 
 
 def plot_optimization_results(patient_id: int,

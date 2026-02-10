@@ -1,8 +1,13 @@
+"""
+Docstring for pkpd
+"""
+import os
+from typing import Dict
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import fsolve
-import pandas as pd
-import os
+
+from utils.physiological_constants import PhysiologicalConstants
 
 
 # ============================================================================
@@ -14,29 +19,42 @@ class NorepinephrinePKPD:
     def __init__(self, injections_dict=None, initial_conditions={}):
         self.injections_dict = injections_dict if injections_dict is not None else {}
 
-        # PK model parameters
-        self.C_endo = 0.81
-        self.k_a = 0.02
-        self.V_c = 0.49
-        self.k_12 = 0.06
-        self.k_21 = 0.04
-        self.k_el = 0.05
+        self.set_parameters(PhysiologicalConstants().get_constants_dict())
+        
+        # # PK model parameters
+        # self.C_endo = 0.81
+        # self.k_a = 0.02
+        # self.V_c = 0.49
+        # self.k_12 = 0.06
+        # self.k_21 = 0.04
+        # self.k_el = 0.05
 
-        # PD model -- Emax equation
-        self.E_0 = 57.09
-        self.E_max = 113.52
-        self.EC_50 = 15.7
+        # # PD model -- Emax equation
+        # self.E_0 = 57.09
+        # self.E_max = 113.52
+        # self.EC_50 = 15.7
 
-        # PD model -- Windkessel equation
-        self.omega = 1.01
-        self.zeta = 19.44
-        self.nu = 2.12
+        # # PD model -- Windkessel equation
+        # self.omega = 1.01
+        # self.zeta = 19.44
+        # self.nu = 2.12
 
         # Initial conditions
         self.Ad_0 = initial_conditions['Ad_0'] if initial_conditions != {} else 0.0
         self.Ac_0 = initial_conditions['Ac_0'] if initial_conditions != {} else 0.0
         self.Ap_0 = initial_conditions['Ap_0'] if initial_conditions != {} else 0.0
         self.dEdt_0 = 0.0
+        
+    def set_parameters(self, params: Dict):
+        for key, value in params.items():
+            setattr(self, key, value)
+            
+    def get_parameters(self):
+        return {key: value for key, value in self.__dict__.items() if not key.startswith('__') and not callable(value)}
+            
+    def set_initial_conditions(self, initial_conditions: Dict):
+        for key, value in initial_conditions.items():
+            setattr(self, key, value)
 
     def INOR(self, t, patient_id):
         if patient_id not in self.injections_dict:
