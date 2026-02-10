@@ -7,10 +7,10 @@ This script implements an observer to estimate:
 - x3 = Ap (peripheral compartment)
 - x4 = Vc*(EC50 + Cendo) (parameter embedding)
 
-From blood pressure observations using the measurement equation:
-g(y) = (E0 - Emax) * Vc * EC50 / (y - Emax) = x2 + x4
+Observer dynamics: x_hat_dot = (A - LC) x_hat + B*u + L*y
+where y = C @ x_true (validation mode using true output)
 
-Observer dynamics: x_hat_dot = (A - LC) x_hat + B*u + L*g(y)
+Gain L computed via steady-state Kalman filter (Riccati equation).
 """
 
 import sys
@@ -18,17 +18,11 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
-from scipy.signal import place_poles
 from scipy.linalg import solve_continuous_are
-from scipy.interpolate import interp1d
-from typing import Dict, Tuple, Optional, Union, List
+from typing import Dict, Tuple, Union, List
 
 from pkpd import NorepinephrinePKPD
-from utils.datatools import (
-    load_observations,
-    load_injections,
-    load_resimulated_trajectories
-)
+from utils.datatools import load_injections, load_resimulated_trajectories
 from utils.plots import (
     plot_observer_individual_states,
     plot_observer_summary,
@@ -74,66 +68,9 @@ def build_system_matrices(params: Dict[str, float]) -> Tuple[np.ndarray, np.ndar
     return A, B, C
 
 
-def compute_observability_matrix(A: np.ndarray, C: np.ndarray) -> np.ndarray:
-    """Compute the observability matrix O = [C; CA; CA^2; CA^3].
-
-    Args:
-        A: State matrix (n x n)
-        C: Output matrix (1 x n)
-
-    Returns:
-        Observability matrix (n x n)
-    """
-    n = A.shape[0]
-    O = np.zeros((n, n))
-    CA_power = C.copy()
-
-    for i in range(n):
-        O[i, :] = CA_power
-        CA_power = CA_power @ A
-
-    return O
-
-
-def check_observability(A: np.ndarray, C: np.ndarray) -> Tuple[bool, int]:
-    """Check if the system (A, C) is observable.
-
-    Args:
-        A: State matrix
-        C: Output matrix
-
-    Returns:
-        (is_observable, rank) tuple
-    """
-    O = compute_observability_matrix(A, C)
-    rank = np.linalg.matrix_rank(O)
-    n = A.shape[0]
-    return rank == n, rank
-
-
-def compute_observer_gain(A: np.ndarray, C: np.ndarray,
-                          desired_poles: list) -> np.ndarray:
-    """Compute observer gain L via pole placement.
-
-    For observer: x_hat_dot = (A - LC) x_hat + ...
-    We need eigenvalues of (A - LC) to be the desired poles.
-
-    Using duality: place poles for (A^T, C^T) then L = K^T
-
-    Args:
-        A: State matrix (n x n)
-        C: Output matrix (1 x n)
-        desired_poles: List of n desired eigenvalues (must be negative)
-
-    Returns:
-        Observer gain L (n x 1)
-    """
-    # Pole placement for dual system (A^T, C^T)
-    result = place_poles(A.T, C.T, desired_poles)
-    K = result.gain_matrix
-    L = K.T
-    return L
-
+# =============================================================================
+# KALMAN GAIN
+# =============================================================================
 
 def compute_kalman_gain(A: np.ndarray, C: np.ndarray,
                         Q: np.ndarray, R: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
@@ -168,46 +105,16 @@ def compute_kalman_gain(A: np.ndarray, C: np.ndarray,
 # OBSERVER SIMULATION
 # =============================================================================
 
-def create_bp_interpolator(bp_observations: list,
-                           method: str = 'linear') -> callable:
-    """Create an interpolator for blood pressure observations.
-
-    Args:
-        bp_observations: List of (time, bp_value) tuples
-        method: Interpolation method ('linear', 'nearest', 'zero')
-
-    Returns:
-        Interpolator function: t -> bp(t)
-    """
-    times = np.array([obs[0] for obs in bp_observations])
-    values = np.array([obs[1] for obs in bp_observations])
-
-    # Sort by time
-    sort_idx = np.argsort(times)
-    times = times[sort_idx]
-    values = values[sort_idx]
-
-    if method == 'zero':
-        # Zero-order hold (previous value)
-        interp_func = interp1d(times, values, kind='previous',
-                               bounds_error=False, fill_value=(values[0], values[-1]))
-    else:
-        interp_func = interp1d(times, values, kind=method,
-                               bounds_error=False, fill_value=(values[0], values[-1]))
-
-    return interp_func
-
-
 def simulate_observer(A: np.ndarray, B: np.ndarray, C: np.ndarray, L: np.ndarray,
                       pkpd_model: NorepinephrinePKPD,
-                      bp_interp: callable,
                       t_span: np.ndarray,
                       x_hat_0: np.ndarray,
-                      patient_id: int,
-                      dt: float = 0.5) -> Tuple[np.ndarray, np.ndarray]:
+                      x_true: np.ndarray,
+                      patient_id: int) -> Tuple[np.ndarray, np.ndarray]:
     """Simulate Luenberger observer dynamics using implicit Euler.
 
-    Observer: x_hat_dot = (A - LC) x_hat + B*u + L*g(y)
+    Observer: x_hat_dot = (A - LC) x_hat + B*u + L*y
+    where y = C @ x_true (validation mode).
 
     Implicit Euler scheme:
         x[k+1] = x[k] + dt * (A_obs @ x[k+1] + f[k+1])
@@ -216,18 +123,16 @@ def simulate_observer(A: np.ndarray, B: np.ndarray, C: np.ndarray, L: np.ndarray
     Args:
         A, B, C: System matrices
         L: Observer gain (4x1)
-        pkpd_model: PKPD model instance (for INOR and g(y) computation)
-        bp_interp: Blood pressure interpolator function
+        pkpd_model: PKPD model instance (for INOR)
         t_span: Time points for simulation
         x_hat_0: Initial observer state (4,)
+        x_true: True states (4 x n) for computing output y = C @ x_true
         patient_id: Patient ID for INOR lookup
-        dt: Integration time step (unused, uses t_span spacing)
 
     Returns:
         t_out: Time array
         x_hat_out: Estimated states (4 x n_times)
     """
-    A_obs = A - L @ C  # Observer dynamics matrix
     I = np.eye(4)
 
     n_steps = len(t_span)
@@ -238,21 +143,15 @@ def simulate_observer(A: np.ndarray, B: np.ndarray, C: np.ndarray, L: np.ndarray
         t_next = t_span[i+1]
         dt_i = t_next - t_span[i]
 
-        # Get blood pressure at next time step (implicit)
-        y_next = bp_interp(t_next)
+        # True output: y = C @ x_true
+        y_next = (C @ x_true[:, i+1]).item()
 
-        # Compute g(y) = x2 + x4 at next time
-        g_y_next = pkpd_model.bp_obs_to_x_variables(y_next)
-
-        # Get input u(t) at next time step
+        # Input u(t) = INOR(t)
         u_next = pkpd_model.INOR(t_next, patient_id)
 
-        # Forcing term: f = B*u + L*g(y)
-        f_next = B.flatten() * u_next + L.flatten() * g_y_next
-
         # Implicit Euler: (I - dt*A_obs) @ x[k+1] = x[k] + dt * f[k+1]
-        lhs_matrix = I - dt_i * A_obs
-        rhs_vector = x_hat[:, i] + dt_i * f_next
+        lhs_matrix = I - dt_i * (A - L @ C)
+        rhs_vector = x_hat[:, i] + dt_i * (B.flatten() * u_next + L.flatten() * y_next)
 
         x_hat[:, i+1] = np.linalg.solve(lhs_matrix, rhs_vector)
 
@@ -309,7 +208,7 @@ def compute_metrics(x_true: np.ndarray, x_hat: np.ndarray,
 
 def main():
     print("\n" + "="*70)
-    print("LUENBERGER OBSERVER SIMULATION")
+    print("LUENBERGER OBSERVER SIMULATION (Kalman Gain)")
     print("="*70)
 
     # =========================================================================
@@ -319,30 +218,20 @@ def main():
     TARGET_DIR = 'opti'  # 'opti', 'opti-constrained', or 'standalone'
     RES_DIR = 'results'
 
-    # Gain computation mode: 'kalman' or 'pole_placement'
-    GAIN_MODE = 'kalman'
-
-    # --- Kalman filter parameters (used if GAIN_MODE == 'kalman') ---
+    # Kalman filter parameters
     # Process noise covariance Q diagonal (4x4)
     # Higher values = less trust in model for that state
-    Q_DIAG = [0, 0, 0, 0.1]  # x4 is constant, so low uncertainty
+    Q_DIAG = [0, 0, 0, 0.1]
 
     # Measurement noise covariance R (scalar)
-    # Higher value = less trust in BP measurements
+    # Higher value = less trust in measurements
     R_VALUE = 5.0
-
-    # --- Pole placement parameters (used if GAIN_MODE == 'pole_placement') ---
-    # Desired observer poles (must be negative for stability)
-    DESIRED_POLES = [-0.1, -0.2, -0.3, -0.4]
 
     # Initial observer state:
     #   None        -> zeros [0, 0, 0, 0]
     #   "true"      -> use true initial conditions from loaded trajectories
     #   [list]      -> custom values [x1_0, x2_0, x3_0, x4_0]
     X_HAT_0: Union[None, str, List[float]] = None
-
-    # Simulation time step for observer integration
-    DT_OBSERVER = 0.1  # seconds
 
     # -------------------------------------------------------------------------
     # 1. Load parameters and data
@@ -352,7 +241,6 @@ def main():
 
     # Load parameters
     if TARGET_DIR == 'standalone':
-        # Use default parameters from PKPD model
         print("\nUsing default PKPD parameters (standalone mode)")
         pkpd_model = NorepinephrinePKPD()
         params = {
@@ -367,7 +255,6 @@ def main():
             'E_max': pkpd_model.E_max
         }
     else:
-        # Load optimized parameters
         print(f"\nLoading optimized parameters from {TARGET_DIR}...")
         params = load_optimized_parameters(PATIENT_ID, RES_DIR, TARGET_DIR)
 
@@ -406,15 +293,6 @@ def main():
     print(f"  Time range: [{t_true[0]:.1f}, {t_true[-1]:.1f}] s")
     print(f"  True x4 = Vc*(EC50 + Cendo) = {x4_true_value:.4f}")
 
-    # Load blood pressure observations
-    print("\nLoading blood pressure observations...")
-    observations = load_observations([PATIENT_ID])
-    bp_obs = observations[PATIENT_ID]['blood_pressure']
-    print(f"  Loaded {len(bp_obs)} blood pressure measurements")
-
-    # Create BP interpolator
-    bp_interp = create_bp_interpolator(bp_obs, method='linear')
-
     # -------------------------------------------------------------------------
     # 2. Build system matrices
     # -------------------------------------------------------------------------
@@ -430,23 +308,19 @@ def main():
     print("C matrix:", C)
 
     # -------------------------------------------------------------------------
-    # 3. Compute observer gain L
+    # 3. Compute Kalman gain L
     # -------------------------------------------------------------------------
     print("\n" + "-"*70)
-    print("OBSERVER GAIN DESIGN")
+    print("KALMAN GAIN DESIGN")
     print("-"*70)
 
-    if GAIN_MODE == 'kalman':
-        Q = np.diag(Q_DIAG)
-        R = np.array([[R_VALUE]])
-        L, Sigma = compute_kalman_gain(A, C, Q, R)
-        print(f"\nKalman filter gain (Q_diag={Q_DIAG}, R={R_VALUE})")
-        print(f"\nSteady-state error covariance Σ:")
-        print(Sigma)
-    else:
-        print(f"\nPole placement (desired poles: {DESIRED_POLES})")
-        L = compute_observer_gain(A, C, DESIRED_POLES)
+    Q = np.diag(Q_DIAG)
+    R = np.array([[R_VALUE]])
+    L, Sigma = compute_kalman_gain(A, C, Q, R)
 
+    print(f"\nKalman filter (Q_diag={Q_DIAG}, R={R_VALUE})")
+    print(f"\nSteady-state error covariance Σ:")
+    print(Sigma)
     print(f"\nObserver gain L:")
     print(L)
 
@@ -475,12 +349,11 @@ def main():
         x_hat_0 = np.array(X_HAT_0)
         print(f"\nInitial observer state: custom {x_hat_0}")
 
-    print(f"Simulation time step: {DT_OBSERVER} s")
-    print("\nRunning observer simulation...")
+    print("\nRunning observer simulation (using y = C @ x_true)...")
 
     t_obs, x_hat = simulate_observer(
-        A, B, C, L, pkpd_model, bp_interp,
-        t_true, x_hat_0, PATIENT_ID, DT_OBSERVER
+        A, B, C, L, pkpd_model,
+        t_true, x_hat_0, x_true, PATIENT_ID
     )
 
     print("  Done!")
