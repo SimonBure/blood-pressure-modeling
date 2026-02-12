@@ -214,42 +214,45 @@ def main():
     # =========================================================================
     # CONFIGURATION
     # =========================================================================
-    PATIENT_ID = 6
-    TARGET_DIR = 'opti'  # 'opti', 'opti-constrained', or 'standalone'
+    patient_id = 6
+    parameter_mode = 'population'  # 'population' or 'optimized'
+    
+    parameters_dir = 'opti-constrained' if parameter_mode == 'optimized' else None  # 'opti', 'opti-constrained', or 'standalone'
     RES_DIR = 'results'
 
     # Kalman filter parameters
     # Process noise covariance Q diagonal (4x4)
     # Higher values = less trust in model for that state
-    Q_DIAG = [0, 0, 0, 1]
+    process_noises_vars = [1, 1, 1, 1]
 
     # Measurement noise covariance R (scalar)
     # Higher value = less trust in measurements
-    R_VALUE = 5.0
+    measure_noise_var = 5.0
 
     # Initial observer state:
     #   None        -> zeros [0, 0, 0, 0]
     #   "true"      -> use true initial conditions from loaded trajectories
     #   [list]      -> custom values [x1_0, x2_0, x3_0, x4_0]
-    X_HAT_0: Union[None, str, List[float]] = None
+    X_HAT_0: Union[None, str, List[float]] = [50, 5, 4.6, 150]
 
     # -------------------------------------------------------------------------
     # 1. Load parameters and data
     # -------------------------------------------------------------------------
-    print(f"\nPatient ID: {PATIENT_ID}")
-    print(f"Target directory: {TARGET_DIR}")
+    print(f"\nPatient ID: {patient_id}")
 
     # Load input function
-    injections_dict = load_injections([PATIENT_ID])
+    injections_dict = load_injections([patient_id])
     pkpd_model = NorepinephrinePKPD(injections_dict)
 
     # Load parameters
-    if TARGET_DIR == 'standalone':
-        print("\nUsing default PKPD parameters (standalone mode)")
+    if parameter_mode == 'population':
+        print("\nUsing default PKPD parameters (population mode)")
+        print(f"Target directory: standalone")
         params = pkpd_model.get_parameters()
     else:
-        print(f"\nLoading optimized parameters from {TARGET_DIR}...")
-        params = load_optimized_parameters(PATIENT_ID, RES_DIR, TARGET_DIR)
+        print(f"\nLoading optimized parameters from {parameters_dir}...")
+        print(f"Target directory: {parameters_dir}")
+        params = load_optimized_parameters(patient_id, RES_DIR, parameters_dir)
         pkpd_model.set_parameters(params)
 
     print("\nLoaded parameters:")
@@ -259,11 +262,16 @@ def main():
     # Load true trajectories
     print("\nLoading true trajectories...")
     t_true, Ad_true, Ac_true, Ap_true, _, _ = load_resimulated_trajectories(
-        PATIENT_ID, RES_DIR, TARGET_DIR
+        patient_id, RES_DIR, 'opti-constrained'
     )
 
     # Compute true x4
-    x4_true_value = pkpd_model.x4()
+    print("\nLoading true parameters...")
+    true_parameters = load_optimized_parameters(patient_id, RES_DIR, 'opti-constrained')
+    temp_pkpd = NorepinephrinePKPD()
+    temp_pkpd.set_parameters(true_parameters)
+    x4_true_value = temp_pkpd.x4()
+    # x4_true_value = pkpd_model.x4()
     x4_true = np.full_like(t_true, x4_true_value)
 
     # Stack true states
@@ -293,20 +301,20 @@ def main():
     print("KALMAN GAIN DESIGN")
     print("-"*70)
 
-    Q = np.diag(Q_DIAG)
-    R = np.array([[R_VALUE]])
+    Q = np.diag(process_noises_vars)
+    R = np.array([[measure_noise_var]])
     L, Sigma = compute_kalman_gain(A, C, Q, R)
 
-    print(f"\nKalman filter (Q_diag={Q_DIAG}, R={R_VALUE})")
-    print(f"\nSteady-state error covariance Σ:")
+    print(f"\nKalman filter (Q_diag={process_noises_vars}, R={measure_noise_var})")
+    print("\nSteady-state error covariance Σ:")
     print(Sigma)
-    print(f"\nObserver gain L:")
+    print("\nObserver gain L:")
     print(L)
 
     # Verify eigenvalues
     A_obs = A - L @ C
     eigenvalues = np.linalg.eigvals(A_obs)
-    print(f"\nEigenvalues of (A - LC):")
+    print("\nEigenvalues of (A - LC):")
     for ev in eigenvalues:
         print(f"  {ev:.6f} (stable: {np.real(ev) < 0})")
 
@@ -332,7 +340,7 @@ def main():
 
     t_obs, x_hat = simulate_observer(
         A, B, C, L, pkpd_model,
-        t_true, x_hat_0, x_true, PATIENT_ID
+        t_true, x_hat_0, x_true, patient_id
     )
 
     print("  Done!")
@@ -361,7 +369,7 @@ def main():
     print("GENERATING PLOTS")
     print("-"*70)
 
-    output_dir = f'{RES_DIR}/patient_{PATIENT_ID}/obs'
+    output_dir = f'{RES_DIR}/patient_{patient_id}/obs'
     os.makedirs(output_dir, exist_ok=True)
 
     units = ['nmol', 'nmol', 'nmol', 'nmol']
@@ -370,21 +378,20 @@ def main():
 
     # Individual state plots
     plot_observer_individual_states(t_obs, x_true, x_hat, state_names, units,
-                                    PATIENT_ID, output_dir)
+                                    patient_id, output_dir)
     print("  - Individual state plots saved")
 
     # Summary plot
-    plot_observer_summary(t_obs, x_true, x_hat, state_names, PATIENT_ID, output_dir)
+    plot_observer_summary(t_obs, x_true, x_hat, state_names, patient_id, output_dir)
     print("  - Summary plot saved")
 
     # Error plot
-    plot_observer_estimation_error(t_obs, x_true, x_hat, state_names, PATIENT_ID, output_dir)
+    plot_observer_estimation_error(t_obs, x_true, x_hat, state_names, patient_id, output_dir)
     print("  - Error plot saved")
 
     print("\n" + "="*70)
     print("SIMULATION COMPLETE")
     print("="*70 + "\n")
-
 
 if __name__ == "__main__":
     main()
