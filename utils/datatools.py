@@ -10,13 +10,18 @@ from typing import Dict, Tuple, Optional, List
 # ==============================================================================
 # DATA LOADING
 # ==============================================================================
+def load_all_patient_ids() -> List[int]:
+    """Load all available patient IDs from the dataset."""
+    df = pd.read_csv('data/joachim.csv')
+    return sorted(df['id'].unique())
 
-def load_observations(patient_ids: Optional[List[int]] = None,
+
+def load_observations(patient_ids: List[int],
                      csv_path: str = 'data/joachim.csv') -> Dict[int, Dict]:
     """Load observation data for specified patients.
 
     Args:
-        patient_ids: List of patient IDs to load, or None for all patients.
+        patient_ids: List of patient IDs to load.
         csv_path: Path to CSV file with observations.
 
     Returns:
@@ -24,19 +29,6 @@ def load_observations(patient_ids: Optional[List[int]] = None,
         Each list contains (time, value) tuples.
     """
     df = pd.read_csv(csv_path)
-    available_patients = sorted(df['id'].unique())
-
-    # If no patients specified, load all
-    if not patient_ids:
-        patient_ids = available_patients
-    else:
-        # Validate that requested patients exist in the dataset
-        invalid_patients = [pid for pid in patient_ids if pid not in available_patients]
-        if invalid_patients:
-            print(f"\n  ERROR: The following patient IDs do not exist in observations dataset:")
-            print(f"    Requested: {invalid_patients}")
-            print(f"    Available: {available_patients}")
-            exit(1)
 
     df_obs = df[df['obs'] != '.'].copy()
     df_obs['obs'] = pd.to_numeric(df_obs['obs'])
@@ -54,7 +46,7 @@ def load_observations(patient_ids: Optional[List[int]] = None,
     return observations_dict
 
 
-def load_injections(patient_ids: Optional[List[int]] = None,
+def load_injections(patient_ids: List[int],
                    csv_path: str = 'data/injections.csv') -> Dict[int, Tuple]:
     """Load injection protocols for specified patients.
 
@@ -66,10 +58,6 @@ def load_injections(patient_ids: Optional[List[int]] = None,
         Dictionary mapping patient_id to (times, amounts, durations) tuple.
     """
     inj_df = pd.read_csv(csv_path)
-
-    # If no patients specified, load all available patients
-    if not patient_ids:
-        patient_ids = sorted(inj_df['patient_id'].unique())
 
     injections_dict = {}
 
@@ -241,7 +229,7 @@ def save_optimal_parameters(patient_id: int,
     params_dict['final_cost'] = float(cost_value)
 
     json_path = f'{output_path}/params.json'
-    with open(json_path, 'w') as f:
+    with open(json_path, 'w', encoding='utf-8') as f:
         json.dump(params_dict, f, indent=2)
 
     print(f"  ✓ Parameters saved to {json_path}")

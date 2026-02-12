@@ -11,7 +11,7 @@ Usage:
     python -m opti.pipeline
 """
 
-from typing import Dict
+from typing import Dict, List
 import numpy as np
 
 from opti.config import OptimizationConfig, PhysiologicalConstants
@@ -28,6 +28,7 @@ from opti.postprocessing import (
     run_resimulation
 )
 from utils.datatools import (
+    load_all_patient_ids,
     load_observations,
     load_injections,
     load_patient_e0_indiv,
@@ -40,6 +41,17 @@ from utils.plots import (
     plot_pkpd_vs_casadi_trajectories,
     plot_injection_verification
 )
+
+
+def get_actual_patient_ids(config_patients_ids):
+    if config_patients_ids == "all":
+        return load_all_patient_ids()
+    elif isinstance(config_patients_ids, int):
+        return [config_patients_ids]
+    elif isinstance(config_patients_ids, List):
+        return config_patients_ids
+    else:
+        raise ValueError(f"Invalid patient_ids: {config_patients_ids}")
 
 
 def run_pipeline(config: OptimizationConfig, mode: str = 'full') -> None:
@@ -84,32 +96,23 @@ def run_pipeline(config: OptimizationConfig, mode: str = 'full') -> None:
 
     # Load CSV data (needed for all modes)
     print("Loading CSV data...")
-    injections_dict = load_injections(config.patient_ids, config.inj_csv_path)
-    observations = load_observations(config.patient_ids, config.obs_csv_path)
+    patients_ids = get_actual_patient_ids(config.patient_ids)
+    
+    injections_dict = load_injections(patients_ids, config.inj_csv_path)
+    observations = load_observations(patients_ids, config.obs_csv_path)
 
-    # Determine actual patient list after loading
-    patients_with_obs = set(observations.keys())
-    patients_with_inj = set(injections_dict.keys())
-    available_patients = sorted(patients_with_obs & patients_with_inj)
+    print(f"Patient IDs after loading: {patients_ids}")
 
-    # Filter to only include requested patient IDs if specified
-    if config.patient_ids is None or config.patient_ids == []:
-        patient_ids = available_patients
-    else:
-        patient_ids = [pid for pid in config.patient_ids if pid in available_patients]
-
-    print(f"Patient IDs after loading: {patient_ids}")
-
-    if not patient_ids:
+    if not patients_ids:
         print("ERROR: No patients found with both observations and injection data!")
         return
 
-    print(f"Loaded data for {len(patient_ids)} patient(s): {patient_ids}")
+    print(f"Loaded data for {len(patients_ids)} patient(s): {patients_ids}")
 
     # Load patient-specific baseline E0 values (needed for full and resim_and_plot modes)
     if mode in ['full', 'resim_and_plot']:
         print("Loading patient-specific E0_indiv values...")
-        patient_e0_dict = load_patient_e0_indiv(patient_ids, config.obs_csv_path)
+        patient_e0_dict = load_patient_e0_indiv(patients_ids, config.obs_csv_path)
         print(f"  ✓ Loaded E0_indiv for {len(patient_e0_dict)} patients\n")
 
     # Get initial parameters for comparison (only needed in full mode)
@@ -128,27 +131,27 @@ def run_pipeline(config: OptimizationConfig, mode: str = 'full') -> None:
         }
 
     # Process each patient with mode-specific logic
-    for patient_id in patient_ids:
+    for p_id in patients_ids:
         print(f"\n{'#'*70}")
-        print(f"# Processing Patient {patient_id}")
+        print(f"# Processing Patient {p_id}")
         print(f"{'#'*70}\n")
 
         try:
             if mode == 'full':
                 run_full_pipeline_patient(
-                    patient_id, config, observations, injections_dict,
+                    p_id, config, observations, injections_dict,
                     patient_e0_dict, params_initial
                 )
             elif mode == 'resim_and_plot':
                 run_resim_and_plot_patient(
-                    patient_id, config, observations, injections_dict,
+                    p_id, config, observations, injections_dict,
                 )
             elif mode == 'plot_only':
                 run_plot_only_patient(
-                    patient_id, config, observations, injections_dict
+                    p_id, config, observations, injections_dict
                 )
         except FileNotFoundError as e:
-            print(f"\n❌ ERROR for patient {patient_id}:")
+            print(f"\n❌ ERROR for patient {p_id}:")
             print(str(e))
             print("\nSkipping to next patient...\n")
             continue
@@ -204,7 +207,6 @@ def run_full_pipeline_patient(patient_id: int,
     Ad_data = inputs['Ad_data']
     Ac_data = inputs['Ac_data']
     Ap_data = inputs['Ap_data']
-    E_data = inputs['E_data']
     patient_e0 = inputs['patient_e0']
     n_original_observations = inputs['n_original_observations']
     n_optimization_points = inputs['n_optimization_points']
@@ -219,7 +221,7 @@ def run_full_pipeline_patient(patient_id: int,
     print("\nStep 4: Running CasADi optimization...")
     result = optimize_patient_parameters(
         times, BP_obs, inor_values,
-        Ad_data, Ac_data, Ap_data, E_data,
+        Ad_data, Ac_data, Ap_data,
         config, patient_e0
     )
     print(f"  ✓ Final cost: {result.cost:.4f}")
@@ -254,7 +256,7 @@ def run_full_pipeline_patient(patient_id: int,
 
     # Compute equilibrium blood pressure
     E_equilibrium = compute_equilibrium_blood_pressure(
-        times, inor_values, result.params
+        inor_values, result.params
     )
 
     # Step 8: Main visualization
@@ -328,16 +330,16 @@ def run_resim_and_plot_patient(patient_id: int,
     # Compute equilibrium blood pressure
     inor_values = precompute_injection_rates(patient_id, times, injections_dict)
     E_equilibrium = compute_equilibrium_blood_pressure(
-        times, inor_values, params_opt
+        inor_values, params_opt
     )
 
     # Create dummy trajectories dict for plotting (from first point of resim)
-    _, Ad_resim, Ac_resim, Ap_resim, _, _ = resim_results
+    _, a_d_resim, a_c_resim, a_p_resim, _ = resim_results
     trajectories = {
         'times': times,
-        'Ad': Ad_resim,
-        'Ac': Ac_resim,
-        'Ap': Ap_resim
+        'Ad': a_d_resim,
+        'Ac': a_c_resim,
+        'Ap': a_p_resim
     }
 
     # Step 5: Main visualization
@@ -408,16 +410,16 @@ def run_plot_only_patient(patient_id: int,
     # Compute equilibrium blood pressure
     inor_values = precompute_injection_rates(patient_id, times, injections_dict)
     E_equilibrium = compute_equilibrium_blood_pressure(
-        times, inor_values, params_opt
+        inor_values, params_opt
     )
 
     # Create trajectories dict from loaded data
-    _, Ad_resim, Ac_resim, Ap_resim, _, _ = resim_results
+    _, a_d_resim, a_c_resim, a_p_resim, _ = resim_results
     trajectories = {
         'times': times,
-        'Ad': Ad_resim,
-        'Ac': Ac_resim,
-        'Ap': Ap_resim
+        'Ad': a_d_resim,
+        'Ac': a_c_resim,
+        'Ap': a_p_resim
     }
 
     # Step 4: Main visualization
@@ -443,7 +445,7 @@ if __name__ == "__main__":
     USE_PAPER_BOUNDS = True    # Toggle biologically realistic bounds from paper (mu +/- 3*sigma)
 
     some_config = OptimizationConfig(
-        patient_ids=[5],  # None = all patients, or specify list like [30, 31]
+        patient_ids=[5, 6],  # int for 1 patient, list for multiple patients, 'all' for every patient
         max_data_points=5000,
         use_e0_constraint=USE_E0_CONSTRAINT,
         use_paper_bounds=USE_PAPER_BOUNDS,
@@ -453,8 +455,8 @@ if __name__ == "__main__":
     )
 
     # Select pipeline mode
-    PIPELINE_MODE = 'full'             # Complete pipeline: data prep -> optim -> resim -> plots
-    # mode = 'resim_and_plot'   # Load params, resimulate, save, and plot
-    # mode = 'plot_only'        # Load trajectories and create plots only
+    PIPELINE_MODE = 'full'  # Complete pipeline: data prep -> optim -> resim -> plots
+    # PIPELINE_MODE = 'resim_and_plot'   # Load params, resimulate, save, and plot
+    # PIPELINE_MODE = 'plot_only'        # Load trajectories and create plots only
 
     run_pipeline(config=some_config, mode=PIPELINE_MODE)

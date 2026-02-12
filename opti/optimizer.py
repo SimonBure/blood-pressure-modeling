@@ -13,9 +13,7 @@ from opti.results import OptimizationResult
 from opti.cost_functions import EmaxBPCost
 
 
-def setup_optimization_variables(opti: ca.Opti,
-                                config: OptimizationConfig,
-                                physio: PhysiologicalConstants) -> Dict:
+def setup_optimization_variables(opti: ca.Opti) -> Dict:
     """Setup optimization parameter variables.
 
     Args:
@@ -45,23 +43,21 @@ def setup_optimization_variables(opti: ca.Opti,
 
 
 def setup_state_variables(opti: ca.Opti,
-                          N: int,
-                          config: OptimizationConfig) -> Dict:
+                          n: int) -> Dict:
     """Setup state trajectory variables.
 
     Args:
         opti: CasADi Opti object.
         N: Number of intervals.
-        config: Optimization configuration.
 
     Returns:
         Dictionary of state variables.
     """
     # PK states (always needed)
     states = {
-        'Ad': opti.variable(N + 1),
-        'Ac': opti.variable(N + 1),
-        'Ap': opti.variable(N + 1),
+        'Ad': opti.variable(n + 1),
+        'Ac': opti.variable(n + 1),
+        'Ap': opti.variable(n + 1),
     }
 
     return states
@@ -69,15 +65,13 @@ def setup_state_variables(opti: ca.Opti,
 
 def apply_initial_conditions(opti: ca.Opti,
                              states: Dict,
-                             physio: PhysiologicalConstants,
-                             config: OptimizationConfig) -> None:
+                             physio: PhysiologicalConstants) -> None:
     """Apply initial conditions to state variables.
 
     Args:
         opti: CasADi Opti object.
         states: Dictionary of state variables.
         physio: Physiological constants.
-        config: Optimization configuration.
     """
     opti.subject_to(states['Ad'][0] == physio.Ad_0)
     opti.subject_to(states['Ac'][0] == physio.Ac_0)
@@ -135,7 +129,7 @@ def apply_parameter_constraints(opti: ca.Opti,
                 print("    WARNING: use_e0_constraint=True but patient_e0=None, constraint not applied")
 
 
-def apply_positivity_constraints(opti: ca.Opti, N: int, states: Dict) -> None:
+def apply_positivity_constraints(opti: ca.Opti, n: int, states: Dict) -> None:
     """
     Apply > 0 constraints to PK states.
     
@@ -146,19 +140,18 @@ def apply_positivity_constraints(opti: ca.Opti, N: int, states: Dict) -> None:
     :param states: Dictionary of states.
     :type states: Dict
     """
-    for k in range(N):
+    for k in range(n):
         opti.subject_to(states['Ad'][k] >= 0)
         opti.subject_to(states['Ac'][k] >= 0)
         opti.subject_to(states['Ap'][k] >= 0)
 
 
 def apply_dynamics_constraints(opti: ca.Opti,
-                               N: int,
+                               n: int,
                                dt_values: np.ndarray,
                                params: Dict,
                                states: Dict,
-                               inor_values: np.ndarray,
-                               config: OptimizationConfig) -> None:
+                               inor_values: np.ndarray) -> None:
     """Apply PK and PD dynamics constraints.
 
     Args:
@@ -172,7 +165,7 @@ def apply_dynamics_constraints(opti: ca.Opti,
     """
     print("  Building dynamics constraints...")
 
-    for k in range(N):
+    for k in range(n):
         dt = dt_values[k]
 
         # PK equations (Euler implicit at k+1) - ALWAYS
@@ -226,9 +219,6 @@ def set_initial_guess(opti: ca.Opti,
                      Ad_data: np.ndarray,
                      Ac_data: np.ndarray,
                      Ap_data: np.ndarray,
-                     E_data: np.ndarray,
-                     N: int,
-                     config: OptimizationConfig,
                      patient_e0: float | None = None) -> None:
     """Set initial guess for parameters and states.
 
@@ -296,7 +286,7 @@ def extract_solution(sol: ca.OptiSol,
                     params: Dict,
                     states: Dict,
                     times: np.ndarray,
-                    config: OptimizationConfig) -> Tuple[Dict[str, float], Dict[str, np.ndarray]]:
+                    ) -> Tuple[Dict[str, float], Dict[str, np.ndarray]]:
     """Extract optimized parameters and trajectories from solution.
 
     Args:
@@ -335,7 +325,6 @@ def optimize_patient_parameters(times: np.ndarray,
                                 Ad_data: np.ndarray,
                                 Ac_data: np.ndarray,
                                 Ap_data: np.ndarray,
-                                E_data: np.ndarray,
                                 config: OptimizationConfig,
                                 patient_e0: float | None = None) -> OptimizationResult:
     """Run CasADi optimization to estimate PKPD parameters.
@@ -366,15 +355,15 @@ def optimize_patient_parameters(times: np.ndarray,
     physio = PhysiologicalConstants()
 
     # Setup optimization variables
-    params = setup_optimization_variables(opti, config, physio)
-    states = setup_state_variables(opti, N, config)
+    params = setup_optimization_variables(opti)
+    states = setup_state_variables(opti, N)
 
     # Apply constraints
     # apply_initial_conditions(opti, states, physio, config)
     apply_parameter_bounds(opti, params, config)
     apply_parameter_constraints(opti, params, config, patient_e0)
     apply_positivity_constraints(opti, N, states)
-    apply_dynamics_constraints(opti, N, dt_values, params, states, inor_values, config)
+    apply_dynamics_constraints(opti, N, dt_values, params, states, inor_values)
 
     # Build cost function (BP-only, no concentration term)
     print("  Building cost function on BP: obs VS model...")
@@ -391,13 +380,13 @@ def optimize_patient_parameters(times: np.ndarray,
 
     # Set initial guess
     set_initial_guess(opti, params, states, physio,
-                     Ad_data, Ac_data, Ap_data, E_data, N, config, patient_e0)
+                     Ad_data, Ac_data, Ap_data, patient_e0)
 
     # Solve optimization
     sol, converged = solve_optimization(opti)
 
     # Extract solution
-    params_opt, trajectories = extract_solution(sol, params, states, times, config)
+    params_opt, trajectories = extract_solution(sol, params, states, times)
     cost_value = float(sol.value(cost))
 
     solve_time = time.time() - start_time

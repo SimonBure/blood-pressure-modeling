@@ -1,7 +1,7 @@
 """Configuration management for PKPD parameter optimization."""
 
 from dataclasses import dataclass, field
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Union
 from utils.physiological_constants import PhysiologicalConstants
 
 @dataclass
@@ -29,7 +29,7 @@ class OptimizationConfig:
     """
 
     # Patient selection
-    patient_ids: Optional[List[int]] = None
+    patient_ids: Union[int, List[int], str] = 1  # Default: patient 1
 
     # Subsampling configuration
     max_data_points: int = 400  # Maximum optimization points (subsample if exceeded)

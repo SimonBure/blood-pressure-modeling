@@ -28,8 +28,7 @@ def precompute_injection_rates(patient_id: int,
     return inor_values
 
 
-def compute_equilibrium_blood_pressure(times: np.ndarray,
-                                       inor_values: np.ndarray,
+def compute_equilibrium_blood_pressure(inor_values: np.ndarray,
                                        params: Dict[str, float]) -> np.ndarray:
     """Compute equilibrium blood pressure over time using Emax model.
 
