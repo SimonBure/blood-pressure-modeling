@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import fsolve
 
 from utils.physiological_constants import PhysiologicalConstants
+from utils.datatools import get_patient_ids
 
 
 # ============================================================================
@@ -214,8 +215,8 @@ if __name__ == "__main__":
     from utils.datatools import load_observations, load_injections
 
     # Patients to simulate (empty list = all patients from observation dataset)
-    patients = [5]  # Example: [23, 20, 15] or [] for all
-
+    patients = 'all'  # a int for one patient, a list for multiple patients and 'all' for every patients
+        
     # Output control
     SAVE_GRAPHS = True
     SAVE_NUMPY_RESULTS = True
@@ -224,33 +225,20 @@ if __name__ == "__main__":
     print("\n" + "="*70)
     print("PKPD SIMULATION - NOREPINEPHRINE MODEL")
     print("="*70)
-
+    
     print("\nLoading observation data...")
-    if not patients:
-        print("  → No patients specified, loading all patients from dataset")
-    else:
-        print(f"  → Loading {len(patients)} specified patient(s): {patients}")
-
-    observations = load_observations(patients)
-    patients = [int(p) for p in sorted(observations.keys())]
+    patients_ids = get_patient_ids(patients)
+    observations = load_observations(patients_ids)
     print(f"  ✓ Loaded observations for {len(observations)} patients")
 
     print("\nLoading injection protocols...")
-    injections = load_injections(patients)
-    patients_with_injections = [pid for pid in patients if len(injections[pid][0]) > 0]
-    patients_without_injections = [pid for pid in patients if len(injections[pid][0]) == 0]
-    print(f"  ✓ Loaded injection data for {len(patients_with_injections)} patients")
-    if patients_without_injections:
-        print(f"  ⚠ Warning: {len(patients_without_injections)} patient(s) have no injection data: {patients_without_injections}")
+    injections = load_injections(patients_ids)
 
     pkpd_model = NorepinephrinePKPD(injections)
 
     print("\n" + "-"*70)
     print("SIMULATION META-PARAMETERS")
     print("-"*70)
-    print("  Model type: Linear")
-    print(f"  Number of patients: {len(patients)}")
-    print(f"  Patient IDs: {patients}")
     print(f"  Save graphs: {SAVE_GRAPHS}")
     print(f"  Save numpy arrays: {SAVE_NUMPY_RESULTS}")
     print(f"  Output directory: results/patient_<id>/pkpd/{OUTPUT_SUBDIR}/")
@@ -260,11 +248,11 @@ if __name__ == "__main__":
     print("-"*70)
 
     print("\n" + "="*70)
-    print(f"STARTING SIMULATION FOR {len(patients)} PATIENT(S)")
+    print(f"STARTING PKPD SIMULATION FOR {len(patients_ids)}")
     print("="*70 + "\n")
 
     # Simulate each patient
-    for index, p_id in enumerate(patients):
+    for index, p_id in enumerate(patients_ids):
         res = pkpd_model.simulate(p_id, t_end=2200, dt=0.5)
 
         # Save results
