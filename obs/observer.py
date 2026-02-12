@@ -215,7 +215,7 @@ def main():
     # =========================================================================
     # CONFIGURATION
     # =========================================================================
-    patients = 'all'  # int for 1 patient, list for multiple patients, 'all' for every patient
+    patients = 5  # int for 1 patient, list for multiple patients, 'all' for every patient
     parameter_mode = 'population'  # 'population' or 'optimized'
     
     parameters_dir = 'opti-constrained' if parameter_mode == 'optimized' else ''  # 'opti', 'opti-constrained', or 'standalone'

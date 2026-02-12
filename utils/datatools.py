@@ -145,9 +145,12 @@ def load_resimulated_trajectories(patient_id: int,
 
     if not os.path.exists(time_file):
         raise FileNotFoundError(
-            f"\nERROR: Cannot run plot-only mode for patient {patient_id}\n"
+            f"\nERROR: No trajectory files found for patient {patient_id}\n"
             f"  Missing: {traj_path}/*.npy\n"
-            f"  → Run resimulation first with mode='resim_and_plot' or mode='full'"
+            f"\n  Scripts must be run in this order:\n"
+            f"    1. python pkpd.py                     (standalone PKPD simulation)\n"
+            f"    2. python -m opti.pipeline             (optimization, mode='full')\n"
+            f"    3. python -m obs.observer_simulation   (observer, requires step 2)"
         )
 
     try:
@@ -159,8 +162,12 @@ def load_resimulated_trajectories(patient_id: int,
     except FileNotFoundError as e:
         raise FileNotFoundError(
             f"\nERROR: Incomplete trajectory files for patient {patient_id}\n"
-            f"  Missing: {traj_path}/*.npy\n"
-            f"  → Run resimulation with mode='resim_and_plot' or mode='full'"
+            f"  Missing file in: {traj_path}/\n"
+            f"  Expected: time.npy, Ad.npy, Ac.npy, Ap.npy, bp_emax.npy\n"
+            f"\n  Scripts must be run in this order:\n"
+            f"    1. python pkpd.py                     (standalone PKPD simulation)\n"
+            f"    2. python -m opti.pipeline             (optimization, mode='full')\n"
+            f"    3. python -m obs.observer_simulation   (observer, requires step 2)"
         ) from e
 
     return t, Ad, Ac, Ap, E_emax
