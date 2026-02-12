@@ -79,12 +79,12 @@ class NorepinephrinePKPD:
         dAp_dt = self.k_12 * Ac - self.k_21 * Ap
         return np.array([dAd_dt, dAc_dt, dAp_dt])
 
-    def euler_implicit_pk(self, y_n, t_n, dt, patient_id):
+    def euler_implicit_pk(self, y_n, t_n, dt, patient_id) -> np.ndarray:
         t_np1 = t_n + dt
         def residual(y_np1):
             return y_np1 - y_n - dt * self.pk_rhs(t_np1, y_np1, patient_id)
         y_np1 = fsolve(residual, y_n)
-        return y_np1
+        return np.array(y_np1)
 
     def compute_concentration(self, Ac):
         return self.C_endo + Ac / self.V_c
@@ -264,7 +264,7 @@ if __name__ == "__main__":
             output_subdir=OUTPUT_SUBDIR
         )
 
-        print("✓")
+        print(f"Patient {p_id} processed !")
 
     print("\n" + "="*70)
     print("SIMULATION COMPLETED SUCCESSFULLY")
