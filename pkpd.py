@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import fsolve
 
 from utils.physiological_constants import PhysiologicalConstants
-from utils.datatools import get_patient_ids
+from utils.datatools import get_patient_ids, load_observations, load_injections
 
 
 # ============================================================================
@@ -212,11 +212,9 @@ def save_patient_results(patient_id, results, model, observations_dict=None,
 
 
 if __name__ == "__main__":
-    from utils.datatools import load_observations, load_injections
-
     # Patients to simulate (empty list = all patients from observation dataset)
-    patients = 'all'  # a int for one patient, a list for multiple patients and 'all' for every patients
-        
+    PATIENTS = 'all'  # int for one patient, list for multiple patients or 'all' for every patients
+
     # Output control
     SAVE_GRAPHS = True
     SAVE_NUMPY_RESULTS = True
@@ -225,9 +223,9 @@ if __name__ == "__main__":
     print("\n" + "="*70)
     print("PKPD SIMULATION - NOREPINEPHRINE MODEL")
     print("="*70)
-    
+
     print("\nLoading observation data...")
-    patients_ids = get_patient_ids(patients)
+    patients_ids = get_patient_ids(PATIENTS)
     observations = load_observations(patients_ids)
     print(f"  ✓ Loaded observations for {len(observations)} patients")
 
