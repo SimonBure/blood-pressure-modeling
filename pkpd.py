@@ -214,7 +214,7 @@ if __name__ == "__main__":
     from utils.datatools import load_observations, load_injections
 
     # Patients to simulate (empty list = all patients from observation dataset)
-    patients = []  # Example: [23, 20, 15] or [] for all
+    patients = [5]  # Example: [23, 20, 15] or [] for all
 
     # Output control
     SAVE_GRAPHS = True
