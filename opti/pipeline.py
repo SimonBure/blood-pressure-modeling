@@ -11,7 +11,7 @@ Usage:
     python -m opti.pipeline
 """
 
-from typing import Dict, List
+from typing import Dict
 import numpy as np
 
 from opti.config import OptimizationConfig, PhysiologicalConstants
@@ -28,7 +28,7 @@ from opti.postprocessing import (
     run_resimulation
 )
 from utils.datatools import (
-    load_all_patient_ids,
+    get_patient_ids,
     load_observations,
     load_injections,
     load_patient_e0_indiv,
@@ -41,17 +41,6 @@ from utils.plots import (
     plot_pkpd_vs_casadi_trajectories,
     plot_injection_verification
 )
-
-
-def get_actual_patient_ids(config_patients_ids):
-    if config_patients_ids == "all":
-        return load_all_patient_ids()
-    elif isinstance(config_patients_ids, int):
-        return [config_patients_ids]
-    elif isinstance(config_patients_ids, List):
-        return config_patients_ids
-    else:
-        raise ValueError(f"Invalid patient_ids: {config_patients_ids}")
 
 
 def run_pipeline(config: OptimizationConfig, mode: str = 'full') -> None:
@@ -81,7 +70,7 @@ def run_pipeline(config: OptimizationConfig, mode: str = 'full') -> None:
     print("="*70)
     print(f"Pipeline Mode: {mode.upper()}")
     print("Configuration:")
-    print(f"  - Patients: {config.patient_ids}")
+    print(f"  - Patients: {config.patients}")
     if mode == 'full':
         print("  - Time sampling: Patient-specific (using actual observation times)")
         print(f"  - Max data points: {config.max_data_points} (subsample if exceeded)")
@@ -96,7 +85,7 @@ def run_pipeline(config: OptimizationConfig, mode: str = 'full') -> None:
 
     # Load CSV data (needed for all modes)
     print("Loading CSV data...")
-    patients_ids = get_actual_patient_ids(config.patient_ids)
+    patients_ids = get_patient_ids(config.patients)
     
     injections_dict = load_injections(patients_ids, config.inj_csv_path)
     observations = load_observations(patients_ids, config.obs_csv_path)
@@ -445,7 +434,7 @@ if __name__ == "__main__":
     USE_PAPER_BOUNDS = True    # Toggle biologically realistic bounds from paper (mu +/- 3*sigma)
 
     some_config = OptimizationConfig(
-        patient_ids=[5, 6],  # int for 1 patient, list for multiple patients, 'all' for every patient
+        patients=5,  # int for 1 patient, list for multiple patients, 'all' for every patient
         max_data_points=5000,
         use_e0_constraint=USE_E0_CONSTRAINT,
         use_paper_bounds=USE_PAPER_BOUNDS,

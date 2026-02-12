@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import json
 import os
-from typing import Dict, Tuple, Optional, List
+from typing import Dict, Tuple, List, Union, Optional
 
 
 # ==============================================================================
@@ -14,6 +14,22 @@ def load_all_patient_ids() -> List[int]:
     """Load all available patient IDs from the dataset."""
     df = pd.read_csv('data/joachim.csv')
     return sorted(df['id'].unique())
+
+
+def get_patient_ids(patients: Union[int, List[int], str]) -> List[int]:
+    """
+    Docstring for get_actual_patient_ids
+    
+    :param config_patients_ids: Description
+    """
+    if patients == "all":
+        return load_all_patient_ids()
+    elif isinstance(patients, int):
+        return [patients]
+    elif isinstance(patients, List):
+        return patients
+    else:
+        raise ValueError(f"Invalid patient_ids: {patients}")
 
 
 def load_observations(patient_ids: List[int],

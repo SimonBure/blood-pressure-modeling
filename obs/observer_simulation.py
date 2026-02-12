@@ -15,20 +15,21 @@ Gain L computed via steady-state Kalman filter (Riccati equation).
 
 import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from typing import Dict, Tuple, Union, List
 
 import numpy as np
 from scipy.linalg import solve_continuous_are
-from typing import Dict, Tuple, Union, List
 
 from pkpd import NorepinephrinePKPD
-from utils.datatools import load_injections, load_resimulated_trajectories
+from utils.datatools import get_patient_ids, load_injections, load_resimulated_trajectories
 from utils.plots import (
     plot_observer_individual_states,
     plot_observer_summary,
     plot_observer_estimation_error
 )
 from opti.postprocessing import load_optimized_parameters
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 # =============================================================================
@@ -214,11 +215,11 @@ def main():
     # =========================================================================
     # CONFIGURATION
     # =========================================================================
-    patient_id = 15
+    patients = 'all'  # int for 1 patient, list for multiple patients, 'all' for every patient
     parameter_mode = 'population'  # 'population' or 'optimized'
     
-    parameters_dir = 'opti-constrained' if parameter_mode == 'optimized' else None  # 'opti', 'opti-constrained', or 'standalone'
-    RES_DIR = 'results'
+    parameters_dir = 'opti-constrained' if parameter_mode == 'optimized' else ''  # 'opti', 'opti-constrained', or 'standalone'
+    res_dir = 'results'
 
     # Kalman filter parameters
     # Process noise covariance Q diagonal (4x4)
@@ -233,160 +234,168 @@ def main():
     #   None        -> zeros [0, 0, 0, 0]
     #   "true"      -> use true initial conditions from loaded trajectories
     #   [list]      -> custom values [x1_0, x2_0, x3_0, x4_0]
-    X_HAT_0: Union[None, str, List[float]] = [50, 5, 4.6, 150]
+    initial_conditions: Union[None, str, List[float]] = [50, 5, 4.6, 150]
 
     # -------------------------------------------------------------------------
     # 1. Load parameters and data
     # -------------------------------------------------------------------------
-    print(f"\nPatient ID: {patient_id}")
+    patients_ids = get_patient_ids(patients)
+    print(f"\nPatient ID: {patients_ids}")
 
     # Load input function
-    injections_dict = load_injections([patient_id])
-    pkpd_model = NorepinephrinePKPD(injections_dict)
+    innjections = load_injections(patients_ids)
+    pkpd_model = NorepinephrinePKPD(innjections)
+    
+    for p_id in patients_ids:
+        print("\n" + "="*50)
+        print(f"PATIENT {p_id}")
+        print("="*50 + "\n")
 
-    # Load parameters
-    if parameter_mode == 'population':
-        print("\nUsing default PKPD parameters (population mode)")
-        print("Target directory: standalone")
-        params = pkpd_model.get_parameters()
-    else:
-        print(f"\nLoading optimized parameters from {parameters_dir}...")
-        print(f"Target directory: {parameters_dir}")
-        params = load_optimized_parameters(patient_id, RES_DIR, parameters_dir)
-        pkpd_model.set_parameters(params)
+        # Load parameters
+        if parameter_mode == 'population':
+            print("\nUsing default PKPD parameters (population mode)")
+            print("Target directory: standalone")
+            params = pkpd_model.get_parameters()
+        else:
+            print(f"\nLoading optimized parameters from {parameters_dir}...")
+            print(f"Target directory: {parameters_dir}")
+            params = load_optimized_parameters(p_id, res_dir, parameters_dir)
+            pkpd_model.set_parameters(params)
 
-    print("\nLoaded parameters:")
-    for key in ['k_a', 'k_12', 'k_21', 'k_el', 'V_c', 'C_endo', 'EC_50', 'E_0', 'E_max']:
-        print(f"  {key}: {params[key]:.6f}")
+        print("\nLoaded parameters:")
+        for key in ['k_a', 'k_12', 'k_21', 'k_el', 'V_c', 'C_endo', 'EC_50', 'E_0', 'E_max']:
+            print(f"  {key}: {params[key]:.6f}")
 
-    # Load true trajectories
-    print("\nLoading true trajectories...")
-    t_true, Ad_true, Ac_true, Ap_true, _, _ = load_resimulated_trajectories(
-        patient_id, RES_DIR, 'opti-constrained'
-    )
+        # Load true trajectories
+        print("\nLoading true trajectories...")
+        t_true, a_d_true, a_c_true, a_p_true, _ = load_resimulated_trajectories(
+            p_id, res_dir, 'opti-constrained'
+        )
 
-    # Compute true x4
-    print("\nLoading true parameters...")
-    true_parameters = load_optimized_parameters(patient_id, RES_DIR, 'opti-constrained')
-    temp_pkpd = NorepinephrinePKPD()
-    temp_pkpd.set_parameters(true_parameters)
-    x4_true_value = temp_pkpd.x4()
-    x4_true = np.full_like(t_true, x4_true_value)
+        # Compute true x4
+        print("\nLoading true parameters...")
+        true_parameters = load_optimized_parameters(p_id, res_dir, 'opti-constrained')
+        temp_pkpd = NorepinephrinePKPD()
+        temp_pkpd.set_parameters(true_parameters)
+        x4_true_value = temp_pkpd.x4()
+        x4_true = np.full_like(t_true, x4_true_value)
 
-    # Stack true states
-    x_true = np.vstack([Ad_true, Ac_true, Ap_true, x4_true])
-    print(f"  Loaded {len(t_true)} time points")
-    print(f"  Time range: [{t_true[0]:.1f}, {t_true[-1]:.1f}] s")
-    print(f"  True x4 = Vc*(EC50 + Cendo) = {x4_true_value:.4f}")
+        # Stack true states
+        x_true = np.vstack([a_d_true, a_c_true, a_p_true, x4_true])
+        print(f"  Loaded {len(t_true)} time points")
+        print(f"  Time range: [{t_true[0]:.1f}, {t_true[-1]:.1f}] s")
+        print(f"  True x4 = Vc*(EC50 + Cendo) = {x4_true_value:.4f}")
 
-    # -------------------------------------------------------------------------
-    # 2. Build system matrices
-    # -------------------------------------------------------------------------
-    print("\n" + "-"*70)
-    print("SYSTEM MATRICES")
-    print("-"*70)
+        # -------------------------------------------------------------------------
+        # 2. Build system matrices
+        # -------------------------------------------------------------------------
+        print("\n" + "-"*70)
+        print("SYSTEM MATRICES")
+        print("-"*70)
 
-    A, B, C = build_system_matrices(params)
+        A, B, C = build_system_matrices(params)
 
-    print("\nA matrix:")
-    print(A)
-    print("\nB matrix:", B.T)
-    print("C matrix:", C)
+        print("\nA matrix:")
+        print(A)
+        print("\nB matrix:", B.T)
+        print("C matrix:", C)
 
-    # -------------------------------------------------------------------------
-    # 3. Compute Kalman gain L
-    # -------------------------------------------------------------------------
-    print("\n" + "-"*70)
-    print("KALMAN GAIN DESIGN")
-    print("-"*70)
+        # -------------------------------------------------------------------------
+        # 3. Compute Kalman gain L
+        # -------------------------------------------------------------------------
+        print("\n" + "-"*70)
+        print("KALMAN GAIN DESIGN")
+        print("-"*70)
 
-    Q = np.diag(process_noises_vars)
-    R = np.array([[measure_noise_var]])
-    L, Sigma = compute_kalman_gain(A, C, Q, R)
+        Q = np.diag(process_noises_vars)
+        R = np.array([[measure_noise_var]])
+        L, Sigma = compute_kalman_gain(A, C, Q, R)
 
-    print(f"\nKalman filter (Q_diag={process_noises_vars}, R={measure_noise_var})")
-    print("\nSteady-state error covariance Σ:")
-    print(Sigma)
-    print("\nObserver gain L:")
-    print(L)
+        print(f"\nKalman filter (Q_diag={process_noises_vars}, R={measure_noise_var})")
+        print("\nSteady-state error covariance Σ:")
+        print(Sigma)
+        print("\nObserver gain L:")
+        print(L)
 
-    # Verify eigenvalues
-    A_obs = A - L @ C
-    eigenvalues = np.linalg.eigvals(A_obs)
-    print("\nEigenvalues of (A - LC):")
-    for ev in eigenvalues:
-        print(f"  {ev:.6f} (stable: {np.real(ev) < 0})")
+        # Verify eigenvalues
+        A_obs = A - L @ C
+        eigenvalues = np.linalg.eigvals(A_obs)
+        print("\nEigenvalues of (A - LC):")
+        for ev in eigenvalues:
+            print(f"  {ev:.6f} (stable: {np.real(ev) < 0})")
 
-    # -------------------------------------------------------------------------
-    # 4. Simulate observer
-    # -------------------------------------------------------------------------
-    print("\n" + "-"*70)
-    print("OBSERVER SIMULATION")
-    print("-"*70)
+        # -------------------------------------------------------------------------
+        # 4. Simulate observer
+        # -------------------------------------------------------------------------
+        print("\n" + "-"*70)
+        print("OBSERVER SIMULATION")
+        print("-"*70)
 
-    # Resolve initial condition
-    if X_HAT_0 is None:
-        x_hat_0 = np.zeros(4)
-        print("\nInitial observer state: zeros [0, 0, 0, 0]")
-    elif X_HAT_0 == "true":
-        x_hat_0 = np.array([Ad_true[0], Ac_true[0], Ap_true[0], x4_true_value])
-        print(f"\nInitial observer state: true ICs {x_hat_0}")
-    else:
-        x_hat_0 = np.array(X_HAT_0)
-        print(f"\nInitial observer state: custom {x_hat_0}")
+        # Resolve initial condition
+        if initial_conditions is None:
+            x_hat_0 = np.zeros(4)
+            print("\nInitial observer state: zeros [0, 0, 0, 0]")
+        elif initial_conditions == "true":
+            x_hat_0 = np.array([a_d_true[0], a_c_true[0], a_p_true[0], x4_true_value])
+            print(f"\nInitial observer state: true ICs {x_hat_0}")
+        else:
+            x_hat_0 = np.array(initial_conditions)
+            print(f"\nInitial observer state: custom {x_hat_0}")
 
-    print("\nRunning observer simulation (using y = C @ x_true)...")
+        print("\nRunning observer simulation (using y = C @ x_true)...")
 
-    t_obs, x_hat = simulate_observer(
-        A, B, C, L, pkpd_model,
-        t_true, x_hat_0, x_true, patient_id
-    )
+        t_obs, x_hat = simulate_observer(
+            A, B, C, L, pkpd_model,
+            t_true, x_hat_0, x_true, p_id
+        )
 
-    print("  Done!")
 
-    # -------------------------------------------------------------------------
-    # 5. Compute metrics
-    # -------------------------------------------------------------------------
-    print("\n" + "-"*70)
-    print("ESTIMATION METRICS")
-    print("-"*70)
+        # -------------------------------------------------------------------------
+        # 5. Compute metrics
+        # -------------------------------------------------------------------------
+        print("\n" + "-"*70)
+        print("ESTIMATION METRICS")
+        print("-"*70)
 
-    state_names = ['Ad', 'Ac', 'Ap', 'x4']
-    metrics = compute_metrics(x_true, x_hat, state_names)
+        state_names = ['Ad', 'Ac', 'Ap', 'x4']
+        metrics = compute_metrics(x_true, x_hat, state_names)
 
-    print(f"\n{'State':<8} {'MAE':>12} {'RMSE':>12} {'Final Err':>12} {'Rel MAE %':>12}")
-    print("-" * 60)
-    for name in state_names:
-        m = metrics[name]
-        print(f"{name:<8} {m['MAE']:>12.4f} {m['RMSE']:>12.4f} "
-              f"{m['final_error']:>12.4f} {m['relative_MAE_%']:>12.2f}")
+        print(f"\n{'State':<8} {'MAE':>12} {'RMSE':>12} {'Final Err':>12} {'Rel MAE %':>12}")
+        print("-" * 60)
+        for name in state_names:
+            m = metrics[name]
+            print(f"{name:<8} {m['MAE']:>12.4f} {m['RMSE']:>12.4f} "
+                f"{m['final_error']:>12.4f} {m['relative_MAE_%']:>12.2f}")
 
-    # -------------------------------------------------------------------------
-    # 6. Generate plots
-    # -------------------------------------------------------------------------
-    print("\n" + "-"*70)
-    print("GENERATING PLOTS")
-    print("-"*70)
+        # -------------------------------------------------------------------------
+        # 6. Generate plots
+        # -------------------------------------------------------------------------
+        print("\n" + "-"*70)
+        print("GENERATING PLOTS")
+        print("-"*70)
 
-    output_dir = f'{RES_DIR}/patient_{patient_id}/obs'
-    os.makedirs(output_dir, exist_ok=True)
+        output_dir = f'{res_dir}/patient_{p_id}/obs'
+        os.makedirs(output_dir, exist_ok=True)
 
-    units = ['nmol', 'nmol', 'nmol', 'nmol']
+        units = ['nmol', 'nmol', 'nmol', 'nmol']
 
-    print(f"\nSaving plots to: {output_dir}/")
+        print(f"\nSaving plots to: {output_dir}/")
 
-    # Individual state plots
-    plot_observer_individual_states(t_obs, x_true, x_hat, state_names, units,
-                                    patient_id, output_dir)
-    print("  - Individual state plots saved")
+        # Individual state plots
+        plot_observer_individual_states(t_obs, x_true, x_hat, state_names, units,
+                                        p_id, output_dir)
+        print("  - Individual state plots saved")
 
-    # Summary plot
-    plot_observer_summary(t_obs, x_true, x_hat, state_names, patient_id, output_dir)
-    print("  - Summary plot saved")
+        # Summary plot
+        plot_observer_summary(t_obs, x_true, x_hat, state_names, p_id, output_dir)
+        print("  - Summary plot saved")
 
-    # Error plot
-    plot_observer_estimation_error(t_obs, x_true, x_hat, state_names, patient_id, output_dir)
-    print("  - Error plot saved")
+        # Error plot
+        plot_observer_estimation_error(t_obs, x_true, x_hat, state_names, p_id, output_dir)
+        print("  - Error plot saved")
+        
+        print(f"  \nPatient {p_id} done!")
+        
 
     print("\n" + "="*70)
     print("SIMULATION COMPLETE")

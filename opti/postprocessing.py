@@ -107,7 +107,11 @@ def load_optimized_parameters(patient_id: int,
     Raises:
         FileNotFoundError: If params.json doesn't exist.
     """
+    if output_dir == '':
+        raise ValueError("ERROR: output_dir cannot be empty string")
+    
     params_path = f'{data_dir}/patient_{patient_id}/{output_dir}/params.json'
+
 
     if not os.path.exists(params_path):
         raise FileNotFoundError(

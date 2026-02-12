@@ -29,7 +29,7 @@ class OptimizationConfig:
     """
 
     # Patient selection
-    patient_ids: Union[int, List[int], str] = 1  # Default: patient 1
+    patients: Union[int, List[int], str] = 1  # Default: patient 1
 
     # Subsampling configuration
     max_data_points: int = 400  # Maximum optimization points (subsample if exceeded)
