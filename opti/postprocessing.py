@@ -7,8 +7,11 @@ trajectories, and preparing data for visualization.
 
 import os
 import json
-import numpy as np
 from typing import Dict, Tuple, Optional
+
+import numpy as np
+
+from opti.data_preparation import get_initial_guess_from_pkpd
 from pkpd import NorepinephrinePKPD
 
 
@@ -113,7 +116,7 @@ def load_optimized_parameters(patient_id: int,
             f"  → Run optimization first with mode='full'"
         )
 
-    with open(params_path, 'r') as f:
+    with open(params_path, 'r', encoding='utf-8') as f:
         params_data = json.load(f)
 
     return params_data
@@ -142,7 +145,6 @@ def run_resimulation(patient_id: int,
         Tuple of (t, Ad, Ac, Ap, E_emax) from resimulation.
     """
     # Get initial conditions from standalone PKPD
-    from opti.data_preparation import get_initial_guess_from_pkpd
     Ad_data, Ac_data, Ap_data, _ = get_initial_guess_from_pkpd(
         patient_id, observation_times[:1], data_dir  # Just need first time point
     )

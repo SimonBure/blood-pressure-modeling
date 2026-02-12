@@ -12,30 +12,27 @@ Covariables analyzed:
 
 import os
 import json
+
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Tuple
-from utils.datatools import load_observations, load_patient_covariates, load_resimulated_trajectories
+
+from utils.datatools import load_observations, load_resimulated_trajectories
 
 
-def compute_mean_err(observations: np.ndarray, resim_bp: np.ndarray
-) -> float:        
+def compute_mean_err(observations: np.ndarray, resim_bp: np.ndarray):        
     return np.mean(observations - resim_bp)
     
 
-def compute_mean_sqr_err(observations: np.ndarray, resim_bp: np.ndarray
-) -> float:
+def compute_mean_sqr_err(observations: np.ndarray, resim_bp: np.ndarray):
     return np.mean((observations - resim_bp) ** 2)
 
 
-def compute_mae(observations: np.ndarray, ref_curve: np.ndarray) -> float:
+def compute_mae(observations: np.ndarray, ref_curve: np.ndarray):
     """Compute Mean Absolute Error between observed and resimulated BP.
 
     Args:
-        patient_id: Patient ID.
         observations: Dictionary from load_observations().
-        resim_time: Time array from resimulation.
-        resim_bp: BP array from resimulation.
+        ref_curve: BP array from resimulation.
 
     Returns:
         MAE value (mmHg).
@@ -141,35 +138,38 @@ def main():
     bp_errors = np.zeros(len(patient_ids))
     ac_errors = np.zeros(len(patient_ids))
     
-    for i, id in enumerate(patient_ids):
-        patient_obs = observations[id]
-        ac_obs = np.array([ac for _, ac in patient_obs["concentration"]])
+    for index, p_id in enumerate(patient_ids):
+        patient_obs = observations[p_id]
+        a_c_obs = np.array([ac for _, ac in patient_obs["concentration"]])
         t_ac_obs = np.array([t for t, _ in patient_obs["concentration"]])
         bp_obs = np.array([bp for _, bp in patient_obs["blood_pressure"]])
         
-        t, _, Ac, __, modeled_bp = load_resimulated_trajectories(id, results_dir, pkpd_dir)
+        # t, _, Ac, __, modeled_bp = load_resimulated_trajectories(id, results_dir, pkpd_dir)
+        resim_res = load_resimulated_trajectories(p_id, results_dir, pkpd_dir)
+        t, _, a_c, _, modeled_bp = resim_res
         
-        Ac = np.interp(t_ac_obs, t, Ac)  # Ac reference points at time compatible with ac_obs
+        a_c = np.interp(t_ac_obs, t, a_c)  # Ac reference points at time compatible with ac_obs
         
         if chosen_metric == 'mae':
             bp_err = compute_mae(bp_obs, modeled_bp)
-            ac_err = compute_mae(ac_obs, Ac)
+            ac_err = compute_mae(a_c_obs, a_c)
         elif chosen_metric == 'mean-squares':
             bp_err = compute_mean_sqr_err(bp_obs, modeled_bp)
-            ac_err = compute_mean_sqr_err(ac_obs, Ac)
+            ac_err = compute_mean_sqr_err(a_c_obs, a_c)
         elif chosen_metric == 'mean-error':
             bp_err = compute_mean_err(bp_obs, modeled_bp)
-            ac_err = compute_mean_err(ac_obs, Ac)
+            ac_err = compute_mean_err(a_c_obs, a_c)
         else:
             raise ValueError("Wrong metric choice.")
             
-        bp_errors[i] = bp_err
-        ac_errors[i] = ac_err
+        bp_errors[index] = bp_err
+        ac_errors[index] = ac_err
         
     # Create final DF
     bp_err_colname = f"{chosen_metric}-BP"
     ac_err_colname = f"{chosen_metric}-Ac"
-    metrics_df = pd.DataFrame({"patient_id": patient_ids, bp_err_colname: bp_errors, ac_err_colname: ac_errors}, columns=["patient_id", bp_err_colname, ac_err_colname])
+    metrics_df = pd.DataFrame({"patient_id": patient_ids, bp_err_colname: bp_errors, ac_err_colname: ac_errors},
+                              columns=["patient_id", bp_err_colname, ac_err_colname])
     print(metrics_df.head())
 
     print_quality_summary(metrics_df)

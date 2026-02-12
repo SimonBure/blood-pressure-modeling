@@ -10,11 +10,10 @@ This script analyzes optimized parameters across all patients and generates:
 
 import os
 import json
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
 from typing import Dict, List
-from utils.datatools import load_patient_e0_indiv
+
+import numpy as np
+import matplotlib.pyplot as plt
 
 
 def get_patient_directories(res_dir: str) -> List[int]:
@@ -60,7 +59,7 @@ def load_all_parameters(res_dir: str, patient_ids: List[int],
         if not os.path.exists(params_path):
             missing_patients.append(pid)
         else:
-            with open(params_path, 'r') as f:
+            with open(params_path, 'r', encoding='utf-8') as f:
                 all_params[pid] = json.load(f)
 
     if missing_patients:
@@ -162,7 +161,7 @@ def save_statistics(stats: Dict[str, Dict[str, float]],
     }
 
     json_path = os.path.join(output_dir, 'stats.json')
-    with open(json_path, 'w') as f:
+    with open(json_path, 'w', encoding='utf-8') as f:
         json.dump(output_data, f, indent=2)
 
     print(f"\nStatistics saved to {json_path}")
@@ -182,14 +181,6 @@ def plot_boxplots(all_params: Dict[int, Dict], output_dir: str) -> None:
     metadata_keys = {'patient_id'}
     first_patient_params = next(iter(all_params.values()))
     param_names = [k for k in first_patient_params.keys() if k not in metadata_keys]
-
-    # Group parameters for organized visualization
-    param_groups = {
-        'PK Parameters': ['C_endo', 'k_a', 'V_c', 'k_12', 'k_21', 'k_el'],
-        'PD Emax Parameters': ['E_0', 'E_max', 'EC_50'],
-        'Optimization Results': ['n_original_observations', 'n_optimization_points',
-                                'n_observation_points', 'final_cost']
-    }
 
     print("\nGenerating boxplots...")
     n_plots = 0
@@ -306,9 +297,9 @@ def main():
     print("ANALYSIS COMPLETE")
     print("="*80)
     print(f"Results saved in: {output_dir}/")
-    print(f"  - stats.json: Summary statistics")
-    print(f"  - e0_comparison.csv: E_0 comparison table")
-    print(f"  - boxplots/: Parameter distribution boxplots")
+    print("  - stats.json: Summary statistics")
+    print("  - e0_comparison.csv: E_0 comparison table")
+    print("  - boxplots/: Parameter distribution boxplots")
     print("="*80 + "\n")
 
 
