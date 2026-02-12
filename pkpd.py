@@ -15,35 +15,38 @@ from utils.physiological_constants import PhysiologicalConstants
 # ============================================================================
 
 class NorepinephrinePKPD:
+    # PK parameters
+    C_endo: float
+    k_a: float
+    V_c: float
+    k_12: float
+    k_21: float
+    k_el: float
+    # PD Emax parameters
+    E_0: float
+    E_max: float
+    EC_50: float
+    
+    # Initial conditions
+    Ad_0: float
+    Ac_0: float
+    Ap_0: float
+    dEdt_0: float
 
-    def __init__(self, injections_dict=None, initial_conditions={}):
+    def __init__(self, injections_dict=None, initial_conditions=None):
         self.injections_dict = injections_dict if injections_dict is not None else {}
 
+        # Set default parameters using the paper physiological constants
         self.set_parameters(PhysiologicalConstants().get_constants_dict())
-        
-        # # PK model parameters
-        # self.C_endo = 0.81
-        # self.k_a = 0.02
-        # self.V_c = 0.49
-        # self.k_12 = 0.06
-        # self.k_21 = 0.04
-        # self.k_el = 0.05
-
-        # # PD model -- Emax equation
-        # self.E_0 = 57.09
-        # self.E_max = 113.52
-        # self.EC_50 = 15.7
-
-        # # PD model -- Windkessel equation
-        # self.omega = 1.01
-        # self.zeta = 19.44
-        # self.nu = 2.12
 
         # Initial conditions
-        self.Ad_0 = initial_conditions['Ad_0'] if initial_conditions != {} else 0.0
-        self.Ac_0 = initial_conditions['Ac_0'] if initial_conditions != {} else 0.0
-        self.Ap_0 = initial_conditions['Ap_0'] if initial_conditions != {} else 0.0
+        self.Ad_0 = 0.0
+        self.Ac_0 = 0.0
+        self.Ap_0 = 0.0
         self.dEdt_0 = 0.0
+        
+        if initial_conditions is not None:
+            self.set_initial_conditions(initial_conditions)
         
     def set_parameters(self, params: Dict):
         for key, value in params.items():
@@ -87,19 +90,6 @@ class NorepinephrinePKPD:
 
     def pd_emax(self, Cc):
         return self.E_0 + (self.E_max - self.E_0) * Cc / (Cc + self.EC_50)
-
-    def pd_windkessel_rhs(self, t, y_pd, Cc):
-        E, V = y_pd
-        dE_dt = V
-        dV_dt = self.nu * Cc - 2 * self.zeta * self.omega * V - self.omega**2 * E
-        return np.array([dE_dt, dV_dt])
-
-    def euler_implicit_windkessel(self, y_pd_n, t_n, dt, Cc_np1):
-        t_np1 = t_n + dt
-        def residual(y_pd_np1):
-            return y_pd_np1 - y_pd_n - dt * self.pd_windkessel_rhs(t_np1, y_pd_np1, Cc_np1)
-        y_pd_np1 = fsolve(residual, y_pd_n)
-        return y_pd_np1
     
     def bp_obs_to_x_variables(self, blood_pressure_obs):
         return (self.E_0 - self.E_max) * self.V_c * self.EC_50 / (blood_pressure_obs - self.E_max)
@@ -119,7 +109,7 @@ class NorepinephrinePKPD:
                    If None, uses uniform grid with fixed dt.
 
         Returns:
-            Tuple of (t, Ad, Ac, Ap, E_emax, E_windkessel) arrays.
+            Tuple of (t, Ad, Ac, Ap, E_emax) arrays.
         """
         # Use custom time points if provided, otherwise use uniform grid
         if t_eval is not None:
@@ -129,56 +119,34 @@ class NorepinephrinePKPD:
 
         n_steps = len(t)
 
-        Ad = np.zeros(n_steps)
-        Ac = np.zeros(n_steps)
-        Ap = np.zeros(n_steps)
-        Cc = np.zeros(n_steps)
-        E_emax = np.zeros(n_steps)
-        E_windkessel = np.zeros(n_steps)
+        a_d = np.zeros(n_steps)
+        a_c = np.zeros(n_steps)
+        a_p = np.zeros(n_steps)
+        c_c = np.zeros(n_steps)
+        e_emax = np.zeros(n_steps)
 
-        Ad[0] = self.Ad_0
-        Ac[0] = self.Ac_0
-        Ap[0] = self.Ap_0
-        Cc[0] = self.compute_concentration(Ac[0])
+        a_d[0] = self.Ad_0
+        a_c[0] = self.Ac_0
+        a_p[0] = self.Ap_0
+        c_c[0] = self.compute_concentration(a_c[0])
 
-        E_emax[0] = self.pd_emax(Cc[0])
-        y_pd = np.array([self.E_0, self.dEdt_0])
-        E_windkessel[0] = y_pd[0]
+        e_emax[0] = self.pd_emax(c_c[0])
 
         for i in range(n_steps - 1):
             # Use variable time step when using custom time points
             dt_i = t[i+1] - t[i]
 
-            y_pk = np.array([Ad[i], Ac[i], Ap[i]])
+            y_pk = np.array([a_d[i], a_c[i], a_p[i]])
             y_pk_new = self.euler_implicit_pk(y_pk, t[i], dt_i, patient_id)
 
-            Ad[i+1] = y_pk_new[0]
-            Ac[i+1] = y_pk_new[1]
-            Ap[i+1] = y_pk_new[2]
+            a_d[i+1] = y_pk_new[0]
+            a_c[i+1] = y_pk_new[1]
+            a_p[i+1] = y_pk_new[2]
 
-            Cc[i+1] = self.compute_concentration(Ac[i+1])
-            E_emax[i+1] = self.pd_emax(Cc[i+1])
+            c_c[i+1] = self.compute_concentration(a_c[i+1])
+            e_emax[i+1] = self.pd_emax(c_c[i+1])
 
-            y_pd = self.euler_implicit_windkessel(y_pd, t[i], dt_i, Cc[i+1])
-            E_windkessel[i+1] = y_pd[0]
-
-        return t, Ad, Ac, Ap, E_emax, E_windkessel
-
-
-# ============================================================================
-# HELPER FUNCTIONS
-# ============================================================================
-
-def decide_simulation_token(index):
-    """Return a progress token for simulation display.
-
-    Args:
-        index: Simulation index.
-
-    Returns:
-        Progress indicator string.
-    """
-    return "►"
+        return t, a_d, a_c, a_p, e_emax
 
 
 def save_patient_results(patient_id, results, model, observations_dict=None,
@@ -187,7 +155,7 @@ def save_patient_results(patient_id, results, model, observations_dict=None,
 
     Args:
         patient_id: Patient ID
-        results: Tuple of (time, Ad, Ac, Ap, bp_emax, bp_windkessel)
+        results: Tuple of (time, Ad, Ac, Ap, bp_emax)
         model: NorepinephrinePKPD instance
         observations_dict: Dictionary of observations for plotting
         save_graph: Whether to save plots
@@ -199,20 +167,19 @@ def save_patient_results(patient_id, results, model, observations_dict=None,
 
     output_dir = f'results/patient_{patient_id}/pkpd/{output_subdir}'
     os.makedirs(output_dir, exist_ok=True)
-    time, Ad, Ac, Ap, bp_emax, bp_windkessel = results
+    time, a_d, a_c, a_p, bp_emax = results
 
     if save_res:
         np.save(f'{output_dir}/time.npy', time)
-        np.save(f'{output_dir}/Ad.npy', Ad)
-        np.save(f'{output_dir}/Ac.npy', Ac)
-        np.save(f'{output_dir}/Ap.npy', Ap)
+        np.save(f'{output_dir}/Ad.npy', a_d)
+        np.save(f'{output_dir}/Ac.npy', a_c)
+        np.save(f'{output_dir}/Ap.npy', a_p)
         np.save(f'{output_dir}/bp_emax.npy', bp_emax)
-        np.save(f'{output_dir}/bp_windkessel.npy', bp_windkessel)
 
     if save_graph:
         plt.figure(figsize=(10, 6))
         plt.plot(time, bp_emax, 'b-', label='Emax (Simulated)')
-        # plt.plot(time, bp_windkessel, color='orange', linestyle='--', label='Windkessel (Simulated)')
+        
         if observations_dict and patient_id in observations_dict:
             bp_obs = observations_dict[patient_id]['blood_pressure']
             if bp_obs:
@@ -226,9 +193,9 @@ def save_patient_results(patient_id, results, model, observations_dict=None,
         plt.savefig(f'{output_dir}/blood_pressure_evol.png')
         plt.close()
 
-        Cc = Ac / model.V_c
+        c_c = a_c / model.V_c
         plt.figure(figsize=(10, 6))
-        plt.plot(time, Cc, 'b-', label='Simulated NOR Concentration')
+        plt.plot(time, c_c, 'b-', label='Simulated NOR Concentration')
         if observations_dict and patient_id in observations_dict:
             conc_obs = observations_dict[patient_id]['concentration']
             if conc_obs:
@@ -250,9 +217,9 @@ if __name__ == "__main__":
     patients = []  # Example: [23, 20, 15] or [] for all
 
     # Output control
-    save_graphs = True
-    save_numpy_results = True
-    output_subdirectory = 'standalone'
+    SAVE_GRAPHS = True
+    SAVE_NUMPY_RESULTS = True
+    OUTPUT_SUBDIR = 'standalone'
 
     print("\n" + "="*70)
     print("PKPD SIMULATION - NOREPINEPHRINE MODEL")
@@ -260,37 +227,36 @@ if __name__ == "__main__":
 
     print("\nLoading observation data...")
     if not patients:
-        print(f"  → No patients specified, loading all patients from dataset")
+        print("  → No patients specified, loading all patients from dataset")
     else:
         print(f"  → Loading {len(patients)} specified patient(s): {patients}")
 
-    observations_dict = load_observations(patients)
-    patients = [int(p) for p in sorted(observations_dict.keys())]
-    print(f"  ✓ Loaded observations for {len(observations_dict)} patients")
+    observations = load_observations(patients)
+    patients = [int(p) for p in sorted(observations.keys())]
+    print(f"  ✓ Loaded observations for {len(observations)} patients")
 
     print("\nLoading injection protocols...")
-    injections_dict = load_injections(patients)
-    patients_with_injections = [pid for pid in patients if len(injections_dict[pid][0]) > 0]
-    patients_without_injections = [pid for pid in patients if len(injections_dict[pid][0]) == 0]
+    injections = load_injections(patients)
+    patients_with_injections = [pid for pid in patients if len(injections[pid][0]) > 0]
+    patients_without_injections = [pid for pid in patients if len(injections[pid][0]) == 0]
     print(f"  ✓ Loaded injection data for {len(patients_with_injections)} patients")
     if patients_without_injections:
         print(f"  ⚠ Warning: {len(patients_without_injections)} patient(s) have no injection data: {patients_without_injections}")
 
-    pkpd_model = NorepinephrinePKPD(injections_dict)
+    pkpd_model = NorepinephrinePKPD(injections)
 
     print("\n" + "-"*70)
     print("SIMULATION META-PARAMETERS")
     print("-"*70)
-    print(f"  Model type: Linear")
+    print("  Model type: Linear")
     print(f"  Number of patients: {len(patients)}")
     print(f"  Patient IDs: {patients}")
-    print(f"  Save graphs: {save_graphs}")
-    print(f"  Save numpy arrays: {save_numpy_results}")
-    print(f"  Output directory: results/patient_<id>/pkpd/{output_subdirectory}/")
+    print(f"  Save graphs: {SAVE_GRAPHS}")
+    print(f"  Save numpy arrays: {SAVE_NUMPY_RESULTS}")
+    print(f"  Output directory: results/patient_<id>/pkpd/{OUTPUT_SUBDIR}/")
     print("\n  PKPD Model Parameters:")
     print(f"    PK: C_endo={pkpd_model.C_endo}, k_a={pkpd_model.k_a}, V_c={pkpd_model.V_c}, k_12={pkpd_model.k_12}, k_21={pkpd_model.k_21}, k_el={pkpd_model.k_el}")
     print(f"    PD Emax: E_0={pkpd_model.E_0}, E_max={pkpd_model.E_max}, EC_50={pkpd_model.EC_50}")
-    print(f"    PD Windkessel: omega={pkpd_model.omega}, zeta={pkpd_model.zeta}, nu={pkpd_model.nu}")
     print("-"*70)
 
     print("\n" + "="*70)
@@ -298,23 +264,18 @@ if __name__ == "__main__":
     print("="*70 + "\n")
 
     # Simulate each patient
-    for i, patient_id in enumerate(patients):
-        # Progress indicator
-        progress_token = decide_simulation_token(i)
-        print(f"{progress_token} Patient {patient_id:3d} ", end='', flush=True)
-
-        # Run simulation
-        results = pkpd_model.simulate(patient_id, t_end=2200, dt=0.5)
+    for index, p_id in enumerate(patients):
+        res = pkpd_model.simulate(p_id, t_end=2200, dt=0.5)
 
         # Save results
         save_patient_results(
-            patient_id,
-            results,
+            p_id,
+            res,
             pkpd_model,
-            observations_dict,
-            save_graph=save_graphs,
-            save_res=save_numpy_results,
-            output_subdir=output_subdirectory
+            observations,
+            save_graph=SAVE_GRAPHS,
+            save_res=SAVE_NUMPY_RESULTS,
+            output_subdir=OUTPUT_SUBDIR
         )
 
         print("✓")
@@ -322,9 +283,9 @@ if __name__ == "__main__":
     print("\n" + "="*70)
     print("SIMULATION COMPLETED SUCCESSFULLY")
     print("="*70)
-    print(f"  Results saved in: results/patient_<id>/pkpd/{output_subdirectory}/")
-    if save_graphs:
-        print(f"    - Graphs: blood_pressure_evol.png, nor_conc_evol.png")
-    if save_numpy_results:
-        print(f"    - Arrays: time.npy, Ad.npy, Ac.npy, Ap.npy, bp_emax.npy, bp_windkessel.npy")
+    print(f"  Results saved in: results/patient_<id>/pkpd/{OUTPUT_SUBDIR}/")
+    if SAVE_GRAPHS:
+        print("    - Graphs: blood_pressure_evol.png, nor_conc_evol.png")
+    if SAVE_NUMPY_RESULTS:
+        print("    - Arrays: time.npy, Ad.npy, Ac.npy, Ap.npy, bp_emax.npy")
     print("="*70 + "\n")

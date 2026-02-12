@@ -10,7 +10,7 @@ import numpy as np
 from typing import Dict, Tuple
 from opti.config import OptimizationConfig, PhysiologicalConstants
 from opti.results import OptimizationResult
-from opti.cost_functions import create_cost_function
+from opti.cost_functions import EmaxBPCost
 
 
 def setup_optimization_variables(opti: ca.Opti,
@@ -36,27 +36,10 @@ def setup_optimization_variables(opti: ca.Opti,
         'k_el': opti.variable(),
     }
 
-    # PD Emax parameters (conditional)
-    if config.cost_function_mode in ['emax', 'both']:
-        params['E_0'] = opti.variable()
-        params['E_max'] = opti.variable()
-        params['EC_50'] = opti.variable()
-    else:
-        # Fixed values when not optimizing Emax
-        params['E_0'] = physio.E_0
-        params['E_max'] = physio.E_max
-        params['EC_50'] = physio.EC_50
-
-    # PD Windkessel parameters (conditional)
-    if config.cost_function_mode in ['windkessel', 'both']:
-        params['omega'] = opti.variable()
-        params['zeta'] = opti.variable()
-        params['nu'] = opti.variable()
-    else:
-        # Fixed values when not optimizing Windkessel
-        params['omega'] = physio.omega
-        params['zeta'] = physio.zeta
-        params['nu'] = physio.nu
+    # PD Emax parameters
+    params['E_0'] = opti.variable()
+    params['E_max'] = opti.variable()
+    params['EC_50'] = opti.variable()
 
     return params
 
@@ -81,11 +64,6 @@ def setup_state_variables(opti: ca.Opti,
         'Ap': opti.variable(N + 1),
     }
 
-    # PD Windkessel states (only if windkessel mode)
-    if config.cost_function_mode in ['windkessel', 'both']:
-        states['E'] = opti.variable(N + 1)
-        states['dEdt'] = opti.variable(N + 1)
-
     return states
 
 
@@ -104,10 +82,6 @@ def apply_initial_conditions(opti: ca.Opti,
     opti.subject_to(states['Ad'][0] == physio.Ad_0)
     opti.subject_to(states['Ac'][0] == physio.Ac_0)
     opti.subject_to(states['Ap'][0] == physio.Ap_0)
-
-    if config.cost_function_mode in ['windkessel', 'both']:
-        opti.subject_to(states['E'][0] == physio.E_0_init)
-        opti.subject_to(states['dEdt'][0] == physio.dEdt_0)
 
 
 def apply_parameter_bounds(opti: ca.Opti,
@@ -158,7 +132,24 @@ def apply_parameter_constraints(opti: ca.Opti,
                 print(f"    Applying hard constraint: E_0 == {patient_e0:.2f} mmHg")
                 opti.subject_to(params['E_0'] == patient_e0)
             else:
-                print(f"    WARNING: use_e0_constraint=True but patient_e0=None, constraint not applied")
+                print("    WARNING: use_e0_constraint=True but patient_e0=None, constraint not applied")
+
+
+def apply_positivity_constraints(opti: ca.Opti, N: int, states: Dict) -> None:
+    """
+    Apply > 0 constraints to PK states.
+    
+    :param opti: CasADi Opti object.
+    :type opti: ca.Opti
+    :param N: Number of intervals.
+    :type N: int
+    :param states: Dictionary of states.
+    :type states: Dict
+    """
+    for k in range(N):
+        opti.subject_to(states['Ad'][k] >= 0)
+        opti.subject_to(states['Ac'][k] >= 0)
+        opti.subject_to(states['Ap'][k] >= 0)
 
 
 def apply_dynamics_constraints(opti: ca.Opti,
@@ -208,25 +199,6 @@ def apply_dynamics_constraints(opti: ca.Opti,
                 params['k_21'] * states['Ap'][k+1]
             )
         )
-
-        # Windkessel equations (only if windkessel mode)
-        if config.cost_function_mode in ['windkessel', 'both']:
-            # Compute concentration at k+1 (needed for PD)
-            Cc_kp1 = params['C_endo'] + states['Ac'][k+1] / params['V_c']
-
-            # dE/dt = dEdt
-            opti.subject_to(
-                states['E'][k+1] == states['E'][k] + dt * states['dEdt'][k+1]
-            )
-
-            # d²E/dt² = nu * Cc - 2*zeta*omega*dEdt - omega²*E
-            opti.subject_to(
-                states['dEdt'][k+1] == states['dEdt'][k] + dt * (
-                    params['nu'] * Cc_kp1 -
-                    2 * params['zeta'] * params['omega'] * states['dEdt'][k+1] -
-                    params['omega']**2 * states['E'][k+1]
-                )
-            )
 
 
 def configure_solver(opti: ca.Opti, config: OptimizationConfig) -> None:
@@ -279,28 +251,17 @@ def set_initial_guess(opti: ca.Opti,
     opti.set_initial(params['k_12'], physio.k_12)
     opti.set_initial(params['k_21'], physio.k_21)
     opti.set_initial(params['k_el'], physio.k_el)
-
-    # Initialize PD parameters (only if they are variables)
-    if config.cost_function_mode in ['emax', 'both']:
-        # Use patient-specific E0 if available, otherwise use default
-        e0_initial = patient_e0 if patient_e0 is not None else physio.E_0
-        opti.set_initial(params['E_0'], e0_initial)
-        opti.set_initial(params['E_max'], physio.E_max)
-        opti.set_initial(params['EC_50'], physio.EC_50)
-
-    if config.cost_function_mode in ['windkessel', 'both']:
-        opti.set_initial(params['omega'], physio.omega)
-        opti.set_initial(params['zeta'], physio.zeta)
-        opti.set_initial(params['nu'], physio.nu)
+    
+    # Use patient-specific E0 if available, otherwise use default
+    e0_initial = patient_e0 if patient_e0 is not None else physio.E_0
+    opti.set_initial(params['E_0'], e0_initial)
+    opti.set_initial(params['E_max'], physio.E_max)
+    opti.set_initial(params['EC_50'], physio.EC_50)
 
     # Initialize state trajectories with data
     opti.set_initial(states['Ad'], Ad_data)
     opti.set_initial(states['Ac'], Ac_data)
     opti.set_initial(states['Ap'], Ap_data)
-
-    if config.cost_function_mode in ['windkessel', 'both']:
-        opti.set_initial(states['E'], E_data)
-        opti.set_initial(states['dEdt'], np.zeros(N+1))
 
 
 def solve_optimization(opti: ca.Opti) -> Tuple[ca.OptiSol, bool]:
@@ -365,10 +326,6 @@ def extract_solution(sol: ca.OptiSol,
         'Ap': sol.value(states['Ap']),
     }
 
-    if config.cost_function_mode in ['windkessel', 'both']:
-        trajectories['E'] = sol.value(states['E'])
-        trajectories['dEdt'] = sol.value(states['dEdt'])
-
     return params_opt, trajectories
 
 
@@ -388,7 +345,7 @@ def optimize_patient_parameters(times: np.ndarray,
         BP_obs: Interpolated blood pressure observations (BP-only, no concentration).
         inor_values: Precomputed injection rates.
         Ad_data, Ac_data, Ap_data: State data for initialization.
-        E_data: Windkessel/Emax state for initialization.
+        E_data: Emax state for initialization.
         config: Optimization configuration.
         patient_e0: Patient-specific baseline E0 (from E0_indiv). If None, uses default.
 
@@ -416,12 +373,13 @@ def optimize_patient_parameters(times: np.ndarray,
     # apply_initial_conditions(opti, states, physio, config)
     apply_parameter_bounds(opti, params, config)
     apply_parameter_constraints(opti, params, config, patient_e0)
+    apply_positivity_constraints(opti, N, states)
     apply_dynamics_constraints(opti, N, dt_values, params, states, inor_values, config)
 
     # Build cost function (BP-only, no concentration term)
     print("  Building cost function on BP: obs VS model...")
 
-    cost_fn = create_cost_function(config.cost_function_mode)
+    cost_fn = EmaxBPCost()
     opti_vars = {**params, **states}
     observations = {'BP_obs': BP_obs}
     cost = cost_fn.compute(opti_vars, observations)

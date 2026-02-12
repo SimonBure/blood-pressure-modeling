@@ -14,8 +14,7 @@ def plot_optimization_results(patient_id: int,
                               E_equilibrium: np.ndarray,
                               data_dir: str,
                               output_dir: str,
-                              n_data_points: int,
-                              cost_function_mode: str) -> None:
+                              n_data_points: int) -> None:
     """Create comparison plots for concentration and blood pressure.
 
     Args:
@@ -28,7 +27,6 @@ def plot_optimization_results(patient_id: int,
         data_dir: Base data directory.
         output_dir: Output subdirectory name.
         n_data_points: Number of data points used.
-        cost_function_mode: Cost function mode.
     """
     output_path = f'{data_dir}/patient_{patient_id}/{output_dir}/{n_data_points}_points'
     os.makedirs(output_path, exist_ok=True)
@@ -52,7 +50,7 @@ def plot_optimization_results(patient_id: int,
     Cc_casadi = params_opt['C_endo'] + Ac_casadi / params_opt['V_c']
 
     # Get PKPD resimulated trajectories
-    t_resim, _, Ac_resim, _, E_emax_resim, E_windkessel_resim = resim_results
+    t_resim, _, Ac_resim, _, E_emax_resim = resim_results
     Cc_resim = params_opt['C_endo'] + Ac_resim / params_opt['V_c']
 
     # ========================================================================
@@ -84,33 +82,16 @@ def plot_optimization_results(patient_id: int,
 
     ax2.scatter(bp_times, bp_values, c='red', s=80, zorder=5,
                 label='Real Observations', alpha=0.8, edgecolors='darkred')
-
-    if cost_function_mode == 'emax':
-        E_casadi = (params_opt['E_0'] +
-                   (params_opt['E_max'] - params_opt['E_0']) * Cc_casadi /
-                   (Cc_casadi + params_opt['EC_50']))
-        ax2.plot(times_casadi, E_casadi, 'b-', linewidth=2,
-                label='CasADi Optimized (Emax)', alpha=0.7)
-        ax2.plot(t_resim, E_emax_resim, 'g--', linewidth=2,
-                label='PKPD Resimulated (Emax)', alpha=0.7)
-        # Add equilibrium blood pressure line
-        ax2.plot(times_casadi, E_equilibrium, 'k--', linewidth=2,
-                label='MAP équilibre', alpha=0.7)
-    elif cost_function_mode == 'windkessel':
-        E_casadi = traj_opt['E']
-        ax2.plot(times_casadi, E_casadi, 'b-', linewidth=2,
-                label='CasADi Optimized (Windkessel)', alpha=0.7)
-        ax2.plot(t_resim, E_windkessel_resim, 'g--', linewidth=2,
-                label='PKPD Resimulated (Windkessel)', alpha=0.7)
-    else:  # both
-        E_casadi = traj_opt['E']
-        ax2.plot(times_casadi, E_casadi, 'b-', linewidth=2,
-                label='CasADi Optimized (Windkessel)', alpha=0.7)
-        ax2.plot(t_resim, E_windkessel_resim, 'g--', linewidth=2,
-                label='PKPD Resimulated (Windkessel)', alpha=0.7)
-        # Add equilibrium blood pressure line (using Emax parameters from 'both' mode)
-        ax2.plot(times_casadi, E_equilibrium, 'k--', linewidth=2,
-                label='MAP équilibre', alpha=0.7)
+    E_casadi = (params_opt['E_0'] +
+                (params_opt['E_max'] - params_opt['E_0']) * Cc_casadi /
+                (Cc_casadi + params_opt['EC_50']))
+    ax2.plot(times_casadi, E_casadi, 'b-', linewidth=2,
+            label='CasADi Optimized (Emax)', alpha=0.7)
+    ax2.plot(t_resim, E_emax_resim, 'g--', linewidth=2,
+            label='PKPD Resimulated (Emax)', alpha=0.7)
+    # Add equilibrium blood pressure line
+    ax2.plot(times_casadi, E_equilibrium, 'k--', linewidth=2,
+            label='MAP équilibre', alpha=0.7)
 
     ax2.set_xlabel('Time (s)', fontsize=12)
     ax2.set_ylabel('MAP (mmHg)', fontsize=12)
@@ -138,7 +119,7 @@ def plot_pkpd_vs_casadi_trajectories(patient_id: int,
                                      data_dir: str,
                                      output_dir: str,
                                      n_data_points: int,
-                                     cost_function_mode: str) -> None:
+                                     ) -> None:
     """Compare CasADi optimization trajectories vs PKPD model re-simulation.
 
     Args:
@@ -149,12 +130,11 @@ def plot_pkpd_vs_casadi_trajectories(patient_id: int,
         data_dir: Base data directory.
         output_dir: Output subdirectory name.
         n_data_points: Number of data points used.
-        cost_function_mode: Cost function mode.
     """
     output_path = f'{data_dir}/patient_{patient_id}/{output_dir}/{n_data_points}_points'
     os.makedirs(output_path, exist_ok=True)
 
-    t_resim, Ad_resim, Ac_resim, Ap_resim, E_emax_resim, E_windkessel_resim = resim_results
+    t_resim, Ad_resim, Ac_resim, Ap_resim, E_emax_resim = resim_results
 
     # Create comparison plot with subplots for each state
     fig, axes = plt.subplots(2, 2, figsize=(16, 10))
@@ -199,23 +179,13 @@ def plot_pkpd_vs_casadi_trajectories(patient_id: int,
 
     # Plot E (BP effect)
     ax = axes[1, 1]
-    if cost_function_mode == 'emax':
-        Cc_casadi = params_opt['C_endo'] + traj_opt['Ac'] / params_opt['V_c']
-        E_casadi = (params_opt['E_0'] +
-                   (params_opt['E_max'] - params_opt['E_0']) * Cc_casadi /
-                   (Cc_casadi + params_opt['EC_50']))
-        ax.plot(times_casadi, E_casadi, 'b-', linewidth=2, label='CasADi (Emax)', alpha=0.7)
-        ax.plot(t_resim, E_emax_resim, 'r--', linewidth=2, label='PKPD Model (Emax)', alpha=0.7)
-    elif cost_function_mode == 'windkessel':
-        ax.plot(times_casadi, traj_opt['E'], 'b-', linewidth=2,
-               label='CasADi (Windkessel)', alpha=0.7)
-        ax.plot(t_resim, E_windkessel_resim, 'r--', linewidth=2,
-               label='PKPD Model (Windkessel)', alpha=0.7)
-    else:  # both
-        ax.plot(times_casadi, traj_opt['E'], 'b-', linewidth=2,
-               label='CasADi (Windkessel)', alpha=0.7)
-        ax.plot(t_resim, E_windkessel_resim, 'r--', linewidth=2,
-               label='PKPD Model (Windkessel)', alpha=0.7)
+    Cc_casadi = params_opt['C_endo'] + traj_opt['Ac'] / params_opt['V_c']
+    E_casadi = (params_opt['E_0'] +
+                (params_opt['E_max'] - params_opt['E_0']) * Cc_casadi /
+                (Cc_casadi + params_opt['EC_50']))
+    ax.plot(times_casadi, E_casadi, 'b-', linewidth=2, label='CasADi (Emax)', alpha=0.7)
+    ax.plot(t_resim, E_emax_resim, 'r--', linewidth=2, label='PKPD Model (Emax)', alpha=0.7)
+
 
     ax.set_xlabel('Time (s)', fontsize=11)
     ax.set_ylabel('MAP (mmHg)', fontsize=11)

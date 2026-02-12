@@ -9,7 +9,6 @@ class PhysiologicalConstants:
     INITIAL_AD = 0.0
     INITIAL_AC = 0.0
     INITIAL_AP = 0.0
-    INITIAL_E_WINDKESSEL = 57.09  # mmHg
     INITIAL_DEDT = 0.0
 
     # Population PK parameters
@@ -25,11 +24,6 @@ class PhysiologicalConstants:
     E_MAX_POP = 113.52  # mmHg
     EC_50_POP = 15.7  # nmol/L
 
-    # Population PD Windkessel parameters
-    OMEGA_POP = 1.01  # rad/s
-    ZETA_POP = 19.44  # dimensionless
-    NU_POP = 2.12  # mmHg/(nmol/L)
-
     # Standard deviations from paper Table 2 (log-space, for log-normal distribution)
     # These are the ω (omega) parameters of the inter-individual variability
     SIGMA_C_ENDO = 0.51
@@ -41,19 +35,6 @@ class PhysiologicalConstants:
     SIGMA_E_0 = 0.22
     SIGMA_E_MAX = 0.51
     SIGMA_EC_50 = 0.59
-    SIGMA_OMEGA = 0.2
-    SIGMA_ZETA = 0.66
-    SIGMA_NU = 0.4
-
-    # Simulation defaults
-    T_END_DEFAULT = 2200  # seconds
-    DT_DEFAULT = 0.5  # seconds
-
-    # Plot settings
-    FIGSIZE_LARGE = (14, 6)
-    FIGSIZE_MEDIUM = (12, 6)
-    FIGSIZE_COMPARISON = (16, 10)
-    DPI = 150
 
     # Paper-based parameter bounds (computed from Table 2 values)
     # Will be populated by get_paper_param_bounds() after class definition
@@ -106,10 +87,6 @@ class PhysiologicalConstants:
             'E_0': cls.compute_lognormal_bounds(cls.E_0_POP, cls.SIGMA_E_0),
             'E_max': cls.compute_lognormal_bounds(cls.E_MAX_POP, cls.SIGMA_E_MAX),
             'EC_50': cls.compute_lognormal_bounds(cls.EC_50_POP, cls.SIGMA_EC_50),
-            # PD Windkessel parameters
-            'omega': cls.compute_lognormal_bounds(cls.OMEGA_POP, cls.SIGMA_OMEGA),
-            'zeta': cls.compute_lognormal_bounds(cls.ZETA_POP, cls.SIGMA_ZETA),
-            'nu': cls.compute_lognormal_bounds(cls.NU_POP, cls.SIGMA_NU),
         }
 
     # Convenience properties for cleaner access
@@ -127,7 +104,7 @@ class PhysiologicalConstants:
 
     @property
     def E_0_init(self) -> float:
-        return self.INITIAL_E_WINDKESSEL
+        return self.E_0_POP
 
     @property
     def dEdt_0(self) -> float:
@@ -168,18 +145,6 @@ class PhysiologicalConstants:
     @property
     def EC_50(self) -> float:
         return self.EC_50_POP
-
-    @property
-    def omega(self) -> float:
-        return self.OMEGA_POP
-
-    @property
-    def zeta(self) -> float:
-        return self.ZETA_POP
-
-    @property
-    def nu(self) -> float:
-        return self.NU_POP
     
     def get_constants_dict(self) -> Dict[str, float]:
         """
@@ -201,11 +166,6 @@ class PhysiologicalConstants:
             'E_0': self.E_0_POP,
             'E_max': self.E_MAX_POP,
             'EC_50': self.EC_50_POP,
-
-            # PD Windkessel parameters
-            'omega': self.OMEGA_POP,
-            'zeta': self.ZETA_POP,
-            'nu': self.NU_POP,
         }
 
 

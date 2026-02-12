@@ -114,7 +114,6 @@ def main():
     """Main function to run PKPD quality analysis."""
     # Configuration
     results_dir = "results"
-    bp_type = "emax"  # or 'windkessel'
     obs_dir = "data/joachim.csv"
     
     is_constrained = False
@@ -148,11 +147,9 @@ def main():
         t_ac_obs = np.array([t for t, _ in patient_obs["concentration"]])
         bp_obs = np.array([bp for _, bp in patient_obs["blood_pressure"]])
         
-        t, _, Ac, __, E_max, E_windkessel = load_resimulated_trajectories(id, results_dir, pkpd_dir)
+        t, _, Ac, __, modeled_bp = load_resimulated_trajectories(id, results_dir, pkpd_dir)
         
         Ac = np.interp(t_ac_obs, t, Ac)  # Ac reference points at time compatible with ac_obs
-        
-        modeled_bp = E_max if bp_type == "emax" else E_windkessel
         
         if chosen_metric == 'mae':
             bp_err = compute_mae(bp_obs, modeled_bp)

@@ -214,7 +214,7 @@ def main():
     # =========================================================================
     # CONFIGURATION
     # =========================================================================
-    patient_id = 6
+    patient_id = 15
     parameter_mode = 'population'  # 'population' or 'optimized'
     
     parameters_dir = 'opti-constrained' if parameter_mode == 'optimized' else None  # 'opti', 'opti-constrained', or 'standalone'
@@ -247,7 +247,7 @@ def main():
     # Load parameters
     if parameter_mode == 'population':
         print("\nUsing default PKPD parameters (population mode)")
-        print(f"Target directory: standalone")
+        print("Target directory: standalone")
         params = pkpd_model.get_parameters()
     else:
         print(f"\nLoading optimized parameters from {parameters_dir}...")
@@ -271,7 +271,6 @@ def main():
     temp_pkpd = NorepinephrinePKPD()
     temp_pkpd.set_parameters(true_parameters)
     x4_true_value = temp_pkpd.x4()
-    # x4_true_value = pkpd_model.x4()
     x4_true = np.full_like(t_true, x4_true_value)
 
     # Stack true states

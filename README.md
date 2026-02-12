@@ -7,7 +7,6 @@ A pharmacokinetic-pharmacodynamic (PK/PD) modeling framework for analyzing blood
 This project implements a comprehensive PK/PD model for norepinephrine-induced blood pressure regulation. It combines:
 - Multi-compartment pharmacokinetic modeling
 - Emax dose-response relationships
-- Windkessel hemodynamic modeling
 - Patient-specific parameter optimization using CasADi
 
 ## File Structure
@@ -61,7 +60,7 @@ pip install -r requirements.txt
 ### PK/PD Model (`pkpd.py`)
 Implements the physiological model with the `NorepinephrinePKPD` class:
 - **PK Component**: Three-compartment model (depot, central, peripheral) with endogenous production
-- **PD Component**: Emax model for dose-response + Windkessel model for hemodynamics
+- **PD Component**: Emax model for dose-response for hemodynamics
 - Supports custom initial conditions for trajectory matching
 
 ### Optimization (`opti/`)

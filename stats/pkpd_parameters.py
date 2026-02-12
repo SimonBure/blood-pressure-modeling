@@ -82,7 +82,7 @@ def compute_statistics(all_params: Dict[int, Dict]) -> Dict[str, Dict[str, float
         Dictionary mapping parameter name to stats dict (mean, std, min, max, median).
     """
     # Define which parameters to analyze (exclude metadata)
-    metadata_keys = {'patient_id', 'cost_function_mode', 'n_observation_points',
+    metadata_keys = {'patient_id', 'n_observation_points',
                     'n_original_observations', 'n_optimization_points', 'final_cost'}
 
     # Get all numeric parameter names
@@ -124,7 +124,6 @@ def print_statistics(stats: Dict[str, Dict[str, float]], n_patients: int) -> Non
     # Group parameters by category
     pk_params = ['C_endo', 'k_a', 'V_c', 'k_12', 'k_21', 'k_el']
     pd_emax_params = ['E_0', 'E_max', 'EC_50']
-    pd_windkessel_params = ['omega', 'zeta', 'nu']
     metadata_params = ['n_original_observations', 'n_optimization_points', 'n_observation_points', 'final_cost']
 
     def print_param_group(title: str, params: List[str]) -> None:
@@ -139,7 +138,6 @@ def print_statistics(stats: Dict[str, Dict[str, float]], n_patients: int) -> Non
 
     print_param_group("PK PARAMETERS", pk_params)
     print_param_group("PD EMAX PARAMETERS", pd_emax_params)
-    print_param_group("PD WINDKESSEL PARAMETERS", pd_windkessel_params)
     print_param_group("OPTIMIZATION METADATA", metadata_params)
 
     print("\n" + "="*80)
@@ -181,7 +179,7 @@ def plot_boxplots(all_params: Dict[int, Dict], output_dir: str) -> None:
     os.makedirs(boxplot_dir, exist_ok=True)
 
     # Define which parameters to plot (exclude metadata)
-    metadata_keys = {'patient_id', 'cost_function_mode'}
+    metadata_keys = {'patient_id'}
     first_patient_params = next(iter(all_params.values()))
     param_names = [k for k in first_patient_params.keys() if k not in metadata_keys]
 
@@ -189,7 +187,6 @@ def plot_boxplots(all_params: Dict[int, Dict], output_dir: str) -> None:
     param_groups = {
         'PK Parameters': ['C_endo', 'k_a', 'V_c', 'k_12', 'k_21', 'k_el'],
         'PD Emax Parameters': ['E_0', 'E_max', 'EC_50'],
-        'PD Windkessel Parameters': ['omega', 'zeta', 'nu'],
         'Optimization Results': ['n_original_observations', 'n_optimization_points',
                                 'n_observation_points', 'final_cost']
     }

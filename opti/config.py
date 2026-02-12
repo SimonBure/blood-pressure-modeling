@@ -12,7 +12,6 @@ class OptimizationConfig:
         patient_ids: List of patient IDs to optimize. None = all patients from observations.
         max_data_points: Maximum number of optimization time points. If patient has more
             observations, uniform subsampling is applied.
-        cost_function_mode: Cost function type - 'emax', 'windkessel', or 'both'.
         use_e0_constraint: If True, E_0 is constrained to patient's E0_indiv (hard constraint).
             If False, E0_indiv is used only as initial guess. Results saved to different directories.
         use_paper_bounds: If True, applies biologically realistic bounds from paper (mu +/- 3*sigma).
@@ -36,7 +35,6 @@ class OptimizationConfig:
     max_data_points: int = 400  # Maximum optimization points (subsample if exceeded)
 
     # Model configuration
-    cost_function_mode: str = 'emax'
     use_e0_constraint: bool = False  # If True, E_0 is constrained to E0_indiv; if False, used as initial guess only
     use_paper_bounds: bool = False  # If True, uses biologically realistic bounds from paper (mu +/- 3*sigma)
 
@@ -79,20 +77,8 @@ class OptimizationConfig:
                     # PD Emax parameters - all positive
                     'E_0': (1e-6, None),
                     'E_max': (1e-6, None),  # E_max > E_0 enforced separately
-                    'EC_50': (1e-6, None),
-                    # PD Windkessel parameters - all positive
-                    'omega': (1e-6, None),
-                    'zeta': (1e-6, None),
-                    'nu': (1e-6, None),
+                    'EC_50': (1e-6, None)
                 }
-
-        # Validate cost function mode
-        valid_modes = ['emax', 'windkessel', 'both']
-        if self.cost_function_mode not in valid_modes:
-            raise ValueError(
-                f"cost_function_mode must be one of {valid_modes}, "
-                f"got '{self.cost_function_mode}'"
-            )
 
     def get_ipopt_options(self) -> dict:
         """Get IPOPT solver options dictionary."""

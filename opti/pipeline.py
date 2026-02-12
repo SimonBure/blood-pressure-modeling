@@ -11,11 +11,15 @@ Usage:
     python -m opti.pipeline
 """
 
+from typing import Dict
 import numpy as np
-from typing import Dict, Tuple
 
 from opti.config import OptimizationConfig, PhysiologicalConstants
-from opti.data_preparation import prepare_optimization_inputs
+from opti.data_preparation import (
+    prepare_optimization_inputs,
+    compute_equilibrium_blood_pressure,
+    precompute_injection_rates
+    )
 from opti.optimizer import optimize_patient_parameters
 from opti.postprocessing import (
     resimulate_with_optimized_params,
@@ -36,7 +40,6 @@ from utils.plots import (
     plot_pkpd_vs_casadi_trajectories,
     plot_injection_verification
 )
-from opti.data_preparation import compute_equilibrium_blood_pressure
 
 
 def run_pipeline(config: OptimizationConfig, mode: str = 'full') -> None:
@@ -65,12 +68,11 @@ def run_pipeline(config: OptimizationConfig, mode: str = 'full') -> None:
     print("CASADI PKPD PARAMETER OPTIMIZATION - PATIENT-BY-PATIENT")
     print("="*70)
     print(f"Pipeline Mode: {mode.upper()}")
-    print(f"Configuration:")
+    print("Configuration:")
     print(f"  - Patients: {config.patient_ids}")
     if mode == 'full':
-        print(f"  - Time sampling: Patient-specific (using actual observation times)")
+        print("  - Time sampling: Patient-specific (using actual observation times)")
         print(f"  - Max data points: {config.max_data_points} (subsample if exceeded)")
-        print(f"  - Cost function mode: {config.cost_function_mode}")
         print(f"  - E_0 mode: {'Hard constraint to E0_indiv' if config.use_e0_constraint else 'Initial guess from E0_indiv'}")
         print(f"  - Parameter bounds: {'Paper-based (mu +/- 3*sigma)' if config.use_paper_bounds else 'Default (non-negativity only)'}")
     print(f"  - Output directory: {config.output_dir}/")
@@ -122,10 +124,7 @@ def run_pipeline(config: OptimizationConfig, mode: str = 'full') -> None:
             'k_el': physio.k_el,
             'E_0': physio.E_0,
             'E_max': physio.E_max,
-            'EC_50': physio.EC_50,
-            'omega': physio.omega,
-            'zeta': physio.zeta,
-            'nu': physio.nu
+            'EC_50': physio.EC_50
         }
 
     # Process each patient with mode-specific logic
@@ -143,7 +142,6 @@ def run_pipeline(config: OptimizationConfig, mode: str = 'full') -> None:
             elif mode == 'resim_and_plot':
                 run_resim_and_plot_patient(
                     patient_id, config, observations, injections_dict,
-                    patient_e0_dict
                 )
             elif mode == 'plot_only':
                 run_plot_only_patient(
@@ -154,10 +152,10 @@ def run_pipeline(config: OptimizationConfig, mode: str = 'full') -> None:
             print(str(e))
             print("\nSkipping to next patient...\n")
             continue
-        except Exception as e:
-            print(f"\n❌ UNEXPECTED ERROR for patient {patient_id}: {e}")
-            print("\nSkipping to next patient...\n")
-            continue
+        # except Exception as e:
+        #     print(f"\n❌ UNEXPECTED ERROR for patient {patient_id}: {e}")
+        #     print("\nSkipping to next patient...\n")
+        #     continue
 
     print(f"\n{'='*70}")
     print("ALL PATIENTS PROCESSED SUCCESSFULLY")
@@ -233,7 +231,6 @@ def run_full_pipeline_patient(patient_id: int,
         patient_id, result.params, result.cost,
         config.data_dir, config.output_dir,
         n_original_observations, n_optimization_points,
-        config.cost_function_mode
     )
 
     # Step 6: Print results
@@ -266,7 +263,7 @@ def run_full_pipeline_patient(patient_id: int,
         patient_id, observations, result.trajectories,
         result.params, resim_results, E_equilibrium,
         config.data_dir, config.output_dir,
-        n_optimization_points, config.cost_function_mode
+        n_optimization_points
     )
 
     # Step 9: Comparison plot
@@ -274,15 +271,14 @@ def run_full_pipeline_patient(patient_id: int,
     plot_pkpd_vs_casadi_trajectories(
         patient_id, result.trajectories, resim_results,
         result.params, config.data_dir, config.output_dir,
-        n_optimization_points, config.cost_function_mode
+        n_optimization_points,
     )
 
 
 def run_resim_and_plot_patient(patient_id: int,
                                 config: OptimizationConfig,
                                 observations: Dict,
-                                injections_dict: Dict,
-                                patient_e0_dict: Dict[int, float]) -> None:
+                                injections_dict: Dict) -> None:
     """
     Load optimized parameters, resimulate, save trajectories, and create plots.
 
@@ -330,14 +326,13 @@ def run_resim_and_plot_patient(patient_id: int,
     )
 
     # Compute equilibrium blood pressure
-    from opti.data_preparation import precompute_injection_rates
     inor_values = precompute_injection_rates(patient_id, times, injections_dict)
     E_equilibrium = compute_equilibrium_blood_pressure(
         times, inor_values, params_opt
     )
 
     # Create dummy trajectories dict for plotting (from first point of resim)
-    t_resim, Ad_resim, Ac_resim, Ap_resim, _, _ = resim_results
+    _, Ad_resim, Ac_resim, Ap_resim, _, _ = resim_results
     trajectories = {
         'times': times,
         'Ad': Ad_resim,
@@ -351,7 +346,7 @@ def run_resim_and_plot_patient(patient_id: int,
         patient_id, observations, trajectories,
         params_opt, resim_results, E_equilibrium,
         config.data_dir, config.output_dir,
-        n_optimization_points, config.cost_function_mode
+        n_optimization_points,
     )
 
     # Step 6: Comparison plot
@@ -359,7 +354,7 @@ def run_resim_and_plot_patient(patient_id: int,
     plot_pkpd_vs_casadi_trajectories(
         patient_id, trajectories, resim_results,
         params_opt, config.data_dir, config.output_dir,
-        n_optimization_points, config.cost_function_mode
+        n_optimization_points
     )
 
 
@@ -411,14 +406,13 @@ def run_plot_only_patient(patient_id: int,
     print(f"  ✓ Extracted {n_optimization_points} observation time points")
 
     # Compute equilibrium blood pressure
-    from opti.data_preparation import precompute_injection_rates
     inor_values = precompute_injection_rates(patient_id, times, injections_dict)
     E_equilibrium = compute_equilibrium_blood_pressure(
         times, inor_values, params_opt
     )
 
     # Create trajectories dict from loaded data
-    t_resim, Ad_resim, Ac_resim, Ap_resim, _, _ = resim_results
+    _, Ad_resim, Ac_resim, Ap_resim, _, _ = resim_results
     trajectories = {
         'times': times,
         'Ad': Ad_resim,
@@ -432,7 +426,7 @@ def run_plot_only_patient(patient_id: int,
         patient_id, observations, trajectories,
         params_opt, resim_results, E_equilibrium,
         config.data_dir, config.output_dir,
-        n_optimization_points, config.cost_function_mode
+        n_optimization_points,
     )
 
     # Step 5: Comparison plot
@@ -440,33 +434,27 @@ def run_plot_only_patient(patient_id: int,
     plot_pkpd_vs_casadi_trajectories(
         patient_id, trajectories, resim_results,
         params_opt, config.data_dir, config.output_dir,
-        n_optimization_points, config.cost_function_mode
+        n_optimization_points,
     )
 
 
 if __name__ == "__main__":
-    """
-    Example usage - run pipeline with different modes.
-    """
-    # Configuration flags
-    use_e0_constraint = False  # Toggle E_0 constraint mode
-    use_paper_bounds = True    # Toggle biologically realistic bounds from paper (mu +/- 3*sigma)
+    USE_E0_CONSTRAINT = False
+    USE_PAPER_BOUNDS = True    # Toggle biologically realistic bounds from paper (mu +/- 3*sigma)
 
-    config = OptimizationConfig(
-        patient_ids=[1],  # None = all patients, or specify list like [30, 31]
+    some_config = OptimizationConfig(
+        patient_ids=[5],  # None = all patients, or specify list like [30, 31]
         max_data_points=5000,
-        cost_function_mode='emax',
-        use_e0_constraint=use_e0_constraint,
-        use_paper_bounds=use_paper_bounds,  # Biologically realistic bounds
+        use_e0_constraint=USE_E0_CONSTRAINT,
+        use_paper_bounds=USE_PAPER_BOUNDS,
         ipopt_max_iter=5000,
         ipopt_tol=1e-6,
         ipopt_print_level=0  # 0=silent, 3=minimal, 5=verbose
     )
 
     # Select pipeline mode
-    mode = 'full'             # Complete pipeline: data prep -> optim -> resim -> plots
+    PIPELINE_MODE = 'full'             # Complete pipeline: data prep -> optim -> resim -> plots
     # mode = 'resim_and_plot'   # Load params, resimulate, save, and plot
     # mode = 'plot_only'        # Load trajectories and create plots only
 
-    # Run pipeline
-    run_pipeline(config, mode=mode)
+    run_pipeline(config=some_config, mode=PIPELINE_MODE)

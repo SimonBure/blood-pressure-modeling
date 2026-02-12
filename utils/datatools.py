@@ -131,7 +131,7 @@ def load_resimulated_trajectories(patient_id: int,
         pkpd_dir: PKPD output subdirectory (e.g., 'opti').
 
     Returns:
-        Tuple of (t, Ad, Ac, Ap, E_emax, E_windkessel) arrays.
+        Tuple of (t, Ad, Ac, Ap, E_emax) arrays.
 
     Raises:
         FileNotFoundError: If trajectory files don't exist.
@@ -152,7 +152,6 @@ def load_resimulated_trajectories(patient_id: int,
         Ac = np.load(f'{traj_path}/Ac.npy')
         Ap = np.load(f'{traj_path}/Ap.npy')
         E_emax = np.load(f'{traj_path}/bp_emax.npy')
-        E_windkessel = np.load(f'{traj_path}/bp_windkessel.npy')
     except FileNotFoundError as e:
         raise FileNotFoundError(
             f"\nERROR: Incomplete trajectory files for patient {patient_id}\n"
@@ -160,7 +159,7 @@ def load_resimulated_trajectories(patient_id: int,
             f"  → Run resimulation with mode='resim_and_plot' or mode='full'"
         ) from e
 
-    return t, Ad, Ac, Ap, E_emax, E_windkessel
+    return t, Ad, Ac, Ap, E_emax
 
 
 def load_patient_covariates(
@@ -217,8 +216,7 @@ def save_optimal_parameters(patient_id: int,
                            data_dir: str,
                            output_dir: str,
                            n_original_observations: int,
-                           n_optimization_points: int,
-                           cost_function_mode: str) -> None:
+                           n_optimization_points: int) -> None:
     """Save optimized parameters to JSON file.
 
     Args:
@@ -229,7 +227,6 @@ def save_optimal_parameters(patient_id: int,
         output_dir: Output subdirectory name.
         n_original_observations: Total number of available observations.
         n_optimization_points: Number of points actually used for optimization (after subsampling).
-        cost_function_mode: Cost function mode used.
     """
     output_path = f'{data_dir}/patient_{patient_id}/{output_dir}'
     os.makedirs(output_path, exist_ok=True)
@@ -239,7 +236,6 @@ def save_optimal_parameters(patient_id: int,
 
     # Add metadata
     params_dict['patient_id'] = int(patient_id)
-    params_dict['cost_function_mode'] = cost_function_mode
     params_dict['n_original_observations'] = n_original_observations
     params_dict['n_optimization_points'] = n_optimization_points
     params_dict['final_cost'] = float(cost_value)

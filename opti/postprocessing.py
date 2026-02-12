@@ -29,7 +29,7 @@ def resimulate_with_optimized_params(patient_id: int,
                           If None, uses fixed grid (t_end=2200, dt=0.5).
 
     Returns:
-        Tuple of (t, Ad, Ac, Ap, E_emax, E_windkessel) from simulation.
+        Tuple of (t, Ad, Ac, Ap, E_emax) from simulation.
     """
     pkpd_initial_conditions = {'Ad_0': trajectories['Ad'][0],
                                'Ac_0': trajectories['Ac'][0],
@@ -47,22 +47,19 @@ def resimulate_with_optimized_params(patient_id: int,
     model.E_0 = params_opt['E_0']
     model.E_max = params_opt['E_max']
     model.EC_50 = params_opt['EC_50']
-    model.omega = params_opt['omega']
-    model.zeta = params_opt['zeta']
-    model.nu = params_opt['nu']
 
     # Simulate with custom time points if provided
     if observation_times is not None:
-        t, Ad, Ac, Ap, E_emax, E_windkessel = model.simulate(
+        t, Ad, Ac, Ap, E_emax = model.simulate(
             patient_id, t_eval=observation_times
         )
     else:
         # Fallback to fixed grid for backward compatibility
-        t, Ad, Ac, Ap, E_emax, E_windkessel = model.simulate(
+        t, Ad, Ac, Ap, E_emax = model.simulate(
             patient_id, t_end=2200, dt=0.5
         )
 
-    return t, Ad, Ac, Ap, E_emax, E_windkessel
+    return t, Ad, Ac, Ap, E_emax
 
 
 def save_resimulated_trajectories(patient_id: int,
@@ -73,21 +70,20 @@ def save_resimulated_trajectories(patient_id: int,
 
     Args:
         patient_id: Patient ID
-        resim_results: Tuple of (t, Ad, Ac, Ap, E_emax, E_windkessel)
+        resim_results: Tuple of (t, Ad, Ac, Ap, E_emax)
         data_dir: Base data directory (e.g., 'results')
         output_dir: Output subdirectory (e.g., 'opti')
     """
     output_path = f'{data_dir}/patient_{patient_id}/pkpd/{output_dir}'
     os.makedirs(output_path, exist_ok=True)
 
-    t, Ad, Ac, Ap, E_emax, E_windkessel = resim_results
+    t, Ad, Ac, Ap, E_emax = resim_results
 
     np.save(f'{output_path}/time.npy', t)
     np.save(f'{output_path}/Ad.npy', Ad)
     np.save(f'{output_path}/Ac.npy', Ac)
     np.save(f'{output_path}/Ap.npy', Ap)
     np.save(f'{output_path}/bp_emax.npy', E_emax)
-    np.save(f'{output_path}/bp_windkessel.npy', E_windkessel)
 
     print(f"  ✓ Resimulated trajectories saved to {output_path}/")
 
@@ -143,7 +139,7 @@ def run_resimulation(patient_id: int,
         output_dir: Output subdirectory.
 
     Returns:
-        Tuple of (t, Ad, Ac, Ap, E_emax, E_windkessel) from resimulation.
+        Tuple of (t, Ad, Ac, Ap, E_emax) from resimulation.
     """
     # Get initial conditions from standalone PKPD
     from opti.data_preparation import get_initial_guess_from_pkpd
