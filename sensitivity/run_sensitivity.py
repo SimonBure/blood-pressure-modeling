@@ -8,7 +8,7 @@ from pkpd import NorepinephrinePKPD
 from opti.postprocessing import load_optimized_parameters
 from utils.datatools import load_injections
 from sensitivity.pkpd_integrator import PKPDIntegrator
-from sensitivity.sensitivity import compute_normalized_sensitivity, compute_l2_norms
+from sensitivity.metrics import compute_normalized_sensitivity, compute_l2_norms
 from sensitivity.plots import RESULTS_DIR, plot_normalized_sensitivity, plot_l2_norms
 
 # =============================================================================

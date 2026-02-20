@@ -7,7 +7,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 
-from sensitivity.sensitivity import SensitivityHistory
+from sensitivity.sensitivity_history import SensitivityHistory
 
 RESULTS_DIR = "results/sensitivity"
 OUTPUT_NAMES = ['Ad', 'Ac', 'Ap', 'E']
